@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key><string>Feather</string>
+	<key>CFBundleDisplayName</key><string>Feather</string>
+	<key>CFBundleIdentifier</key><string>dev.feather.browser</string>
+	<key>CFBundleExecutable</key><string>Feather</string>
+	<key>CFBundlePackageType</key><string>APPL</string>
+	<key>CFBundleShortVersionString</key><string>0.1.0</string>
+	<key>CFBundleVersion</key><string>1</string>
+	<key>LSMinimumSystemVersion</key><string>15.4</string>
+	<key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
+	<key>NSHighResolutionCapable</key><true/>
+	<key>NSSupportsAutomaticTermination</key><false/>
+	<!-- Downloaded files get Gatekeeper quarantine, like Safari. -->
+	<key>LSFileQuarantineEnabled</key><true/>
+	<key>NSCameraUsageDescription</key><string>Websites you allow can use your camera for video calls.</string>
+	<key>NSMicrophoneUsageDescription</key><string>Websites you allow can use your microphone for calls.</string>
+	<!-- Lets Feather be chosen as the default browser. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key><string>Web site URL</string>
+			<key>CFBundleURLSchemes</key><array><string>http</string><string>https</string></array>
+		</dict>
+	</array>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key><string>HTML document</string>
+			<key>CFBundleTypeRole</key><string>Viewer</string>
+			<key>LSItemContentTypes</key><array><string>public.html</string></array>
+		</dict>
+	</array>
+</dict>
+</plist>

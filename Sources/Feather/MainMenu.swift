@@ -1,0 +1,104 @@
+import AppKit
+
+enum MainMenu {
+    static func build() -> NSMenu {
+        let main = NSMenu()
+
+        main.addSubmenu("Feather", [
+            item("About Feather", #selector(NSApplication.orderFrontStandardAboutPanel(_:))),
+            .separator(),
+            item("Hide Feather", #selector(NSApplication.hide(_:)), "h"),
+            item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option]),
+            item("Show All", #selector(NSApplication.unhideAllApplications(_:))),
+            .separator(),
+            item("Quit Feather", #selector(NSApplication.terminate(_:)), "q"),
+        ])
+
+        main.addSubmenu("File", [
+            item("New Tab", #selector(NSResponder.newWindowForTab(_:)), "t"),
+            item("New Window", #selector(AppDelegate.newWindow(_:)), "n"),
+            item("New Private Window", #selector(AppDelegate.newPrivateWindow(_:)), "n", [.command, .shift]),
+            item("Open Location…", #selector(BrowserWindowController.focusAddressBar(_:)), "l"),
+            .separator(),
+            item("Close Tab", #selector(NSWindow.performClose(_:)), "w"),
+            item("Print…", #selector(BrowserWindowController.printPage(_:)), "p"),
+        ])
+
+        main.addSubmenu("Edit", [
+            item("Undo", Selector(("undo:")), "z"),
+            item("Redo", Selector(("redo:")), "z", [.command, .shift]),
+            .separator(),
+            item("Cut", #selector(NSText.cut(_:)), "x"),
+            item("Copy", #selector(NSText.copy(_:)), "c"),
+            item("Paste", #selector(NSText.paste(_:)), "v"),
+            item("Select All", #selector(NSText.selectAll(_:)), "a"),
+        ])
+
+        main.addSubmenu("View", [
+            item("Reload Page", #selector(BrowserWindowController.reloadPage(_:)), "r"),
+            item("Actual Size", #selector(BrowserWindowController.zoomReset(_:)), "0"),
+            item("Zoom In", #selector(BrowserWindowController.zoomIn(_:)), "+"),
+            item("Zoom Out", #selector(BrowserWindowController.zoomOut(_:)), "-"),
+            .separator(),
+            item("Picture in Picture", #selector(BrowserWindowController.togglePictureInPicture(_:)), "p", [.command, .option]),
+            item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),
+        ])
+
+        let history = main.addSubmenu("History", [
+            item("Back", #selector(BrowserWindowController.navigateBack(_:)), "["),
+            item("Forward", #selector(BrowserWindowController.navigateForward(_:)), "]"),
+            .separator(),
+            item("Show All History", #selector(AppDelegate.showHistory(_:)), "y"),
+            item("Clear History…", #selector(AppDelegate.clearHistory(_:)), "\u{8}", [.command, .shift]),
+        ])
+        history.items.last?.tag = RecentHistoryMenu.marker
+        history.delegate = RecentHistoryMenu.shared
+
+        main.addSubmenu("Bookmarks", [
+            item("Bookmark This Page", #selector(BrowserWindowController.toggleBookmark(_:)), "d"),
+            .separator(),
+            item("Import Bookmarks…", #selector(AppDelegate.importBookmarks(_:))),
+            item("Export Bookmarks…", #selector(AppDelegate.exportBookmarks(_:))),
+        ])
+
+        let extensions = main.addSubmenu("Extensions", [])
+        extensions.delegate = ExtensionMenu.shared
+
+        main.addSubmenu("Shields", [
+            item("Block Ads & Trackers", #selector(AppDelegate.toggleShields(_:))),
+            item("HTTPS-Only Mode", #selector(AppDelegate.toggleHTTPSOnly(_:))),
+            .separator(),
+            item("Reload Blocklists", #selector(AppDelegate.reloadBlocklists(_:))),
+            item("Open Blocklist Folder", #selector(AppDelegate.openBlocklistFolder(_:))),
+        ])
+
+        let window = main.addSubmenu("Window", [
+            item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
+            item("Show Previous Tab", #selector(NSWindow.selectPreviousTab(_:)), "{"),
+            item("Show Next Tab", #selector(NSWindow.selectNextTab(_:)), "}"),
+            .separator(),
+            item("Bring All to Front", #selector(NSApplication.arrangeInFront(_:))),
+        ])
+        NSApp.windowsMenu = window
+        return main
+    }
+
+    private static func item(_ title: String, _ action: Selector, _ key: String = "",
+                             _ mods: NSEvent.ModifierFlags = .command) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+        item.keyEquivalentModifierMask = mods
+        return item
+    }
+}
+
+private extension NSMenu {
+    @discardableResult
+    func addSubmenu(_ title: String, _ items: [NSMenuItem]) -> NSMenu {
+        let sub = NSMenu(title: title)
+        items.forEach(sub.addItem)
+        let holder = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        holder.submenu = sub
+        addItem(holder)
+        return sub
+    }
+}
