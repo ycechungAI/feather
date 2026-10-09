@@ -54,12 +54,8 @@ enum MainMenu {
         history.items.last?.tag = RecentHistoryMenu.marker
         history.delegate = RecentHistoryMenu.shared
 
-        main.addSubmenu("Bookmarks", [
-            item("Bookmark This Page", #selector(BrowserWindowController.toggleBookmark(_:)), "d"),
-            .separator(),
-            item("Import Bookmarks…", #selector(AppDelegate.importBookmarks(_:))),
-            item("Export Bookmarks…", #selector(AppDelegate.exportBookmarks(_:))),
-        ])
+        let bookmarks = main.addSubmenu("Bookmarks", [])
+        bookmarks.delegate = BookmarksMenu.shared
 
         let sessions = main.addSubmenu("Sessions", [])
         sessions.delegate = SessionsMenu.shared

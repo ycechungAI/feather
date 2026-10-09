@@ -233,28 +233,32 @@ final class Bookmarks {
     /// into itself or one of its descendants is refused.
     func moveNode(from: IndexPath, to: IndexPath) {
         let f = from.map { $0 }
-        var t = to.map { $0 }
+        let t = to.map { $0 }
         guard !f.isEmpty, !t.isEmpty, f != t, node(at: from) != nil else { return }
         if t.starts(with: f) { return }
-
-        // The removal shifts indexes in the source's parent array; fix up the destination.
-        let fp = Array(f.dropLast())
-        let tp = Array(t.dropLast())
-        if tp.starts(with: fp), tp.count > fp.count {
-            let k = fp.count
-            if t[k] > f.last! { t[k] -= 1 }
-        } else if tp == fp {
-            if t.last! > f.last! { t[t.count - 1] -= 1 }
-        }
+        // Validate against the unmodified tree, before the removal shifts anything.
         guard parentArrayExists(Array(t.dropLast())) else { return }
 
         var removed: BookmarkNode?
         withParentArray(&items, path: f) { children in
+            guard children.indices.contains(f.last!) else { return }
             removed = children.remove(at: f.last!)
         }
         guard let node = removed else { return }
-        withParentArray(&items, path: t) { children in
-            children.insert(node, at: min(max(t.last!, 0), children.count))
+
+        // The removal shifted indexes in the source's parent array; fix up the destination.
+        var at = t
+        let fp = Array(f.dropLast())
+        let tp = Array(t.dropLast())
+        if tp == fp {
+            if at.last! > f.last! { at[at.count - 1] -= 1 }
+        } else if tp.starts(with: fp), tp.count > fp.count {
+            let k = fp.count
+            if at[k] > f.last! { at[k] -= 1 }
+        }
+
+        withParentArray(&items, path: at) { children in
+            children.insert(node, at: min(max(at.last!, 0), children.count))
         }
         save()
     }

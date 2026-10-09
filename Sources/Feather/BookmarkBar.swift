@@ -47,12 +47,27 @@ private final class BookmarkButton: NSButton, NSDraggingSource {    /// IndexPat
 
     private var dragInProgress = false
 
-    override func mouseDragged(with event: NSEvent) {
-        if !dragInProgress {
+    /// NSButton's cell consumes press-drag events, so mouseDragged never fires.
+    /// Detect the drag here: if the mouse moves past a small threshold it's a
+    /// drag (start a session); otherwise pass through for a normal click.
+    override func mouseDown(with event: NSEvent) {
+        let start = convert(event.locationInWindow, from: nil)
+        var isDrag = false
+        while let next = window?.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
+            if next.type == .leftMouseUp { break }
+            let p = convert(next.locationInWindow, from: nil)
+            if abs(p.x - start.x) + abs(p.y - start.y) > 4 {
+                isDrag = true
+                break
+            }
+        }
+        if isDrag {
             dragInProgress = true
             let item = NSDraggingItem(pasteboardWriter: BookmarkNodeDragWriter(path: nodePath))
             item.draggingFrame = bounds
             beginDraggingSession(with: [item], event: event, source: self)
+        } else {
+            super.mouseDown(with: event)
         }
     }
 
