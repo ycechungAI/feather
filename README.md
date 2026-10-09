@@ -14,8 +14,12 @@ macOS updates.
 
 ## Bookmarks
 - ☆ next to the address bar (or ⌘D) saves the page to the bookmark bar, which is always shown.
-- Right-click a bookmark to open it in a new tab, rename it or delete it. ⌘-click opens it in a background tab.
-- **Bookmarks ▸ Import / Export** uses the standard bookmarks .html file. To move from Brave:
+- Drag a bookmark to reorder it, or drop it onto a folder to file it there.
+- Click a folder to pop up its contents; folders can nest. The » button shows everything that doesn't fit, folders included.
+- Right-click a bookmark to open it in a new tab, rename it or delete it — or pick "New Folder with Bookmark…" to file it in a new folder. ⌘-click opens it in a background tab.
+- Right-click a folder for Open All in Tabs, Rename or Delete. Deleting a folder deletes everything inside it.
+- Right-click empty space on the bar for New Folder….
+- **Bookmarks ▸ Import / Export** uses the standard bookmarks .html file, preserving folders. To move from Brave:
   Brave ▸ Bookmarks ▸ Bookmark Manager ▸ ⋮ ▸ Export bookmarks, then import that file into Feather.
 
 ## History
