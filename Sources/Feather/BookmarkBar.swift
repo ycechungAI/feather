@@ -23,10 +23,20 @@ private final class BookmarkNodeDragWriter: NSObject, NSPasteboardWriting {
     }
 }
 
+/// The destination of a "Move to" menu command: the node to move and the
+/// parent array to append it to (empty IndexPath = the bookmark bar itself).
+private final class MoveTarget: NSObject {
+    let node: IndexPath
+    let parent: IndexPath
+    init(node: IndexPath, parent: IndexPath) {
+        self.node = node
+        self.parent = parent
+    }
+}
+
 /// A bookmark-bar button. Starts a drag to reorder on mouse-drag; folder buttons
 /// also accept drops, filing the dragged node into the folder.
-private final class BookmarkButton: NSButton, NSDraggingSource {
-    /// IndexPath of the node this button represents (a single index for root items).
+private final class BookmarkButton: NSButton, NSDraggingSource {    /// IndexPath of the node this button represents (a single index for root items).
     var nodePath = IndexPath()
     /// Folder buttons pop a menu on click and accept drops.
     var isFolder = false
@@ -223,11 +233,19 @@ final class BookmarkBar: NSView {
             menu.addItem(.separator())
             menu.addItem(withTitle: "Rename…", action: #selector(renameNode(_:)), keyEquivalent: "")
             menu.addItem(withTitle: "Delete", action: #selector(deleteNode(_:)), keyEquivalent: "")
+            menu.addItem(.separator())
+            let moveTo = NSMenuItem(title: "Move to", action: nil, keyEquivalent: "")
+            moveTo.submenu = moveToMenu(for: path)
+            menu.addItem(moveTo)
         } else {
             menu.addItem(withTitle: "Open in New Tab", action: #selector(openInNewTab(_:)), keyEquivalent: "")
             menu.addItem(withTitle: "Rename…", action: #selector(renameNode(_:)), keyEquivalent: "")
             menu.addItem(.separator())
             menu.addItem(withTitle: "Delete", action: #selector(deleteNode(_:)), keyEquivalent: "")
+            menu.addItem(.separator())
+            let moveTo = NSMenuItem(title: "Move to", action: nil, keyEquivalent: "")
+            moveTo.submenu = moveToMenu(for: path)
+            menu.addItem(moveTo)
             menu.addItem(.separator())
             menu.addItem(withTitle: "New Folder with Bookmark…", action: #selector(newFolderWithNode(_:)), keyEquivalent: "")
         }
@@ -236,24 +254,14 @@ final class BookmarkBar: NSView {
         return button
     }
 
-    /// Popup menu of a folder's children, with submenus for nested folders.
+    /// Popup menu of a folder's children. Each child opens a submenu with its
+    /// actions (Open, Move to, Rename, Delete); nested folders list their
+    /// children first.
     private func folderMenu(at path: IndexPath) -> NSMenu {
         let menu = NSMenu()
         guard case .folder(let folder) = Bookmarks.shared.node(at: path) else { return menu }
         for (i, child) in folder.children.enumerated() {
-            let childPath = path.appending(i)
-            switch child {
-            case .bookmark(let b):
-                let item = NSMenuItem(title: b.title, action: #selector(clicked(_:)), keyEquivalent: "")
-                item.target = self
-                item.representedObject = childPath
-                item.toolTip = b.url.absoluteString
-                menu.addItem(item)
-            case .folder(let f):
-                let item = NSMenuItem(title: f.title, action: nil, keyEquivalent: "")
-                item.submenu = folderMenu(at: childPath)
-                menu.addItem(item)
-            }
+            menu.addItem(folderChildItem(for: child, at: path.appending(i)))
         }
         if menu.items.isEmpty {
             let item = NSMenuItem(title: "(Empty)", action: nil, keyEquivalent: "")
@@ -261,6 +269,121 @@ final class BookmarkBar: NSView {
             menu.addItem(item)
         }
         return menu
+    }
+
+    /// One row of a folder popup: the child's actions in a submenu.
+    private func folderChildItem(for child: BookmarkNode, at childPath: IndexPath) -> NSMenuItem {
+        let item = NSMenuItem(title: child.title, action: nil, keyEquivalent: "")
+        let actions = NSMenu()
+
+        switch child {
+        case .bookmark:
+            let open = NSMenuItem(title: "Open", action: #selector(clicked(_:)), keyEquivalent: "")
+            open.target = self
+            open.representedObject = childPath
+            actions.addItem(open)
+
+            let openTab = NSMenuItem(title: "Open in New Tab", action: #selector(openInNewTab(_:)), keyEquivalent: "")
+            openTab.target = self
+            openTab.representedObject = childPath
+            actions.addItem(openTab)
+        case .folder:
+            for subItem in folderMenu(at: childPath).items {
+                actions.addItem(subItem)
+            }
+            if actions.items.isEmpty {
+                let empty = NSMenuItem(title: "(Empty)", action: nil, keyEquivalent: "")
+                empty.isEnabled = false
+                actions.addItem(empty)
+            } else {
+                actions.addItem(.separator())
+            }
+
+            let openAll = NSMenuItem(title: "Open All in Tabs", action: #selector(openAllInFolder(_:)), keyEquivalent: "")
+            openAll.target = self
+            openAll.representedObject = childPath
+            actions.addItem(openAll)
+        }
+
+        actions.addItem(.separator())
+
+        let moveTo = NSMenuItem(title: "Move to", action: nil, keyEquivalent: "")
+        moveTo.submenu = moveToMenu(for: childPath)
+        actions.addItem(moveTo)
+
+        let rename = NSMenuItem(title: "Rename…", action: #selector(renameNode(_:)), keyEquivalent: "")
+        rename.target = self
+        rename.representedObject = childPath
+        actions.addItem(rename)
+
+        let delete = NSMenuItem(title: "Delete", action: #selector(deleteNode(_:)), keyEquivalent: "")
+        delete.target = self
+        delete.representedObject = childPath
+        actions.addItem(delete)
+
+        item.submenu = actions
+        if let url = child.bookmark?.url {
+            item.toolTip = url.absoluteString
+        }
+        return item
+    }
+
+    /// A "Move to" submenu for the node at `path`, listing the bookmark bar
+    /// (when the node is inside a folder) and every folder. A folder can't be
+    /// moved into itself or one of its descendants.
+    private func moveToMenu(for path: IndexPath) -> NSMenu {
+        let menu = NSMenu()
+        let pathIndexes = path.map { $0 }
+
+        func validDestination(_ folderPath: IndexPath) -> Bool {
+            let f = folderPath.map { $0 }
+            return f != pathIndexes && !f.starts(with: pathIndexes)
+        }
+
+        func addDestination(title: String, parent: IndexPath) {
+            let item = NSMenuItem(title: title, action: #selector(moveNodeTo(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = MoveTarget(node: path, parent: parent)
+            menu.addItem(item)
+        }
+
+        if pathIndexes.count > 1 {
+            addDestination(title: "Bookmarks Bar", parent: IndexPath())
+            menu.addItem(.separator())
+        }
+
+        func collect(_ nodes: [BookmarkNode], base: IndexPath, depth: Int) {
+            for (i, node) in nodes.enumerated() {
+                guard case .folder(let folder) = node else { continue }
+                let folderPath = base.appending(i)
+                if validDestination(folderPath) {
+                    let indent = String(repeating: "  ", count: depth)
+                    addDestination(title: "\(indent)\(folder.title)", parent: folderPath)
+                }
+                collect(folder.children, base: folderPath, depth: depth + 1)
+            }
+        }
+        collect(Bookmarks.shared.items, base: IndexPath(), depth: 0)
+
+        if menu.items.isEmpty {
+            let item = NSMenuItem(title: "(No destinations)", action: nil, keyEquivalent: "")
+            item.isEnabled = false
+            menu.addItem(item)
+        }
+        return menu
+    }
+
+    @objc private func moveNodeTo(_ sender: NSMenuItem) {
+        guard let target = sender.representedObject as? MoveTarget else { return }
+        let parent = target.parent
+        let count: Int
+        if parent.isEmpty {
+            count = Bookmarks.shared.items.count
+        } else {
+            guard case .folder(let folder) = Bookmarks.shared.node(at: parent) else { return }
+            count = folder.children.count
+        }
+        Bookmarks.shared.moveNode(from: target.node, to: parent.appending(count))
     }
 
     private func flattenedBookmarks(in folder: BookmarkFolder) -> [Bookmark] {

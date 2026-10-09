@@ -19,6 +19,7 @@ macOS updates.
 - Right-click a bookmark to open it in a new tab, rename it or delete it — or pick "New Folder with Bookmark…" to file it in a new folder. ⌘-click opens it in a background tab.
 - Right-click a folder for Open All in Tabs, Rename or Delete. Deleting a folder deletes everything inside it.
 - Right-click empty space on the bar for New Folder….
+- To move a bookmark into or out of a folder (or between folders), use **Move to** in its right-click menu — on the bar or inside a folder popup. Moving a folder into itself or one of its own subfolders is refused.
 - **Bookmarks ▸ Import / Export** uses the standard bookmarks .html file, preserving folders. To move from Brave:
   Brave ▸ Bookmarks ▸ Bookmark Manager ▸ ⋮ ▸ Export bookmarks, then import that file into Feather.
 
