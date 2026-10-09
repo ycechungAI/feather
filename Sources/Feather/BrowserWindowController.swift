@@ -155,8 +155,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         config.preferences.isElementFullscreenEnabled = true
         // WebKit keeps Picture in Picture off for apps unless this (non-public) preference is set.
         // Guarded so a future WebKit without it simply skips the call.
-        if config.preferences.responds(to: NSSelectorFromString("_setAllowsPictureInPictureMediaPlayback:")) {
-            config.preferences.setValue(true, forKey: "allowsPictureInPictureMediaPlayback")
+        let pipSelector = NSSelectorFromString("_setAllowsPictureInPictureMediaPlayback:")
+        if config.preferences.responds(to: pipSelector) {
+            config.preferences.perform(pipSelector, with: NSNumber(value: true))
         }
         config.allowsAirPlayForMediaPlayback = true
         Shields.shared.apply(to: config.userContentController, addonInstalls: !isPrivate)
@@ -518,19 +519,39 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
             else active.webkitSetPresentationMode('inline');
             return 'exited';
         }
-        const videos = [...document.querySelectorAll('video')].filter(v => v.readyState > 0);
+        // Candidate videos: must have data and be visible.
+        let videos = [...document.querySelectorAll('video')]
+            .filter(v => v.readyState > 0 && v.offsetWidth > 0 && v.offsetHeight > 0);
+        // On YouTube, prefer the main player video over ads/previews.
+        const ytVideo = document.querySelector('#movie_player video, .html5-main-video');
+        if (ytVideo && videos.includes(ytVideo)) {
+            videos = [ytVideo, ...videos.filter(v => v !== ytVideo)];
+        }
         const area = v => v.offsetWidth * v.offsetHeight;
-        const video = videos.find(v => !v.paused && area(v) > 0)
+        const video = videos.find(v => !v.paused)
             || videos.sort((a, b) => area(b) - area(a))[0];
         if (!video) return 'none';
+        // YouTube disables PiP on its video element; clear both the property and the attribute.
         video.disablePictureInPicture = false;
-        try {
-            await video.requestPictureInPicture();
-        } catch (e) {
-            if (!video.webkitSupportsPresentationMode?.('picture-in-picture')) return 'error:' + e.message;
-            video.webkitSetPresentationMode('picture-in-picture');
+        video.removeAttribute('disablepictureinpicture');
+        let lastError = '';
+        if (typeof video.requestPictureInPicture === 'function') {
+            try {
+                await video.requestPictureInPicture();
+                return 'entered';
+            } catch (e) { lastError = e.message || String(e); }
+        } else {
+            lastError = 'requestPictureInPicture not available';
         }
-        return 'entered';
+        try {
+            if (video.webkitSupportsPresentationMode
+                && video.webkitSupportsPresentationMode('picture-in-picture')) {
+                video.webkitSetPresentationMode('picture-in-picture');
+                return 'entered';
+            }
+            lastError += ' | webkit PiP not supported';
+        } catch (e) { lastError += ' | ' + (e.message || e); }
+        return 'error:' + lastError;
         """
 
     @objc func navigateBack(_ sender: Any?) { webView?.goBack() }
