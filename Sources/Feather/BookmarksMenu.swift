@@ -19,7 +19,7 @@ final class BookmarksMenu: NSObject, NSMenuDelegate {
         if !items.isEmpty {
             menu.addItem(.separator())
             for node in items {
-                menu.addItem(item(for: node))
+                menu.addItem(menuItem(for: node))
             }
         }
 
@@ -38,7 +38,7 @@ final class BookmarksMenu: NSObject, NSMenuDelegate {
         menu.addItem(exportItem)
     }
 
-    private func item(for node: BookmarkNode) -> NSMenuItem {
+    private func menuItem(for node: BookmarkNode) -> NSMenuItem {
         switch node {
         case .bookmark(let b):
             let item = NSMenuItem(title: b.title, action: #selector(openBookmark(_:)), keyEquivalent: "")
@@ -50,7 +50,7 @@ final class BookmarksMenu: NSObject, NSMenuDelegate {
             let item = NSMenuItem(title: f.title, action: nil, keyEquivalent: "")
             let sub = NSMenu()
             for child in f.children {
-                sub.addItem(item(for: child))
+                sub.addItem(menuItem(for: child))
             }
             if sub.items.isEmpty {
                 let empty = NSMenuItem(title: "(Empty)", action: nil, keyEquivalent: "")

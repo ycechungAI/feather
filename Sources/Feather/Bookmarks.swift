@@ -76,7 +76,7 @@ final class Bookmarks {
     private(set) var items: [BookmarkNode] = []
     private let file: URL
 
-    private init() {
+    private convenience init() {
         self.init(storeURL: Settings.supportDirectory.appendingPathComponent("bookmarks.json"))
     }
 
