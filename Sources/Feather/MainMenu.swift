@@ -61,6 +61,9 @@ enum MainMenu {
             item("Export Bookmarks…", #selector(AppDelegate.exportBookmarks(_:))),
         ])
 
+        let sessions = main.addSubmenu("Sessions", [])
+        sessions.delegate = SessionsMenu.shared
+
         let extensions = main.addSubmenu("Extensions", [])
         extensions.delegate = ExtensionMenu.shared
 

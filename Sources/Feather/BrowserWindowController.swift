@@ -71,6 +71,20 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         }
     }
 
+    /// Restores a saved session: each URL opens as a tab in the frontmost
+    /// window, or in a fresh window when none is open.
+    static func restore(_ session: Session) {
+        var host = frontmost(isPrivate: false)?.window
+        for url in session.urls {
+            if host == nil {
+                host = open(url: url).window
+            } else {
+                open(url: url, inTabOf: host, background: true)
+            }
+        }
+        host?.makeKeyAndOrderFront(nil)
+    }
+
     static func frontmost(isPrivate: Bool) -> BrowserWindowController? {
         let key = NSApp.keyWindow?.windowController as? BrowserWindowController
         if let key, key.isPrivate == isPrivate { return key }

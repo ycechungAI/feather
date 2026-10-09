@@ -23,6 +23,11 @@ macOS updates.
 - **Bookmarks ▸ Import / Export** uses the standard bookmarks .html file, preserving folders. To move from Brave:
   Brave ▸ Bookmarks ▸ Bookmark Manager ▸ ⋮ ▸ Export bookmarks, then import that file into Feather.
 
+## Sessions
+- **Sessions ▸ Save Tabs as Session…** saves the frontmost window's tabs under a name you choose.
+- Reopen a session later from the Sessions menu: **Restore** opens its tabs in the frontmost window
+  (or a new window). Each session also offers **Rename…** and **Delete**.
+
 ## History
 - **History ▸ Show All History (⌘Y):** search, open, or delete pages. Select rows and press Delete,
   or right-click for "Delete All from This Site".
