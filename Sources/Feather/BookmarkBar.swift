@@ -42,6 +42,8 @@ private final class BookmarkButton: NSButton, NSDraggingSource {    /// IndexPat
     var isFolder = false
     /// Called with (dragged node path, folder path) when a node is dropped on a folder button.
     var onDropOnFolder: ((IndexPath, IndexPath) -> Void)?
+    /// Called with the dragged node's path when it's dragged off the bar to delete it.
+    var onDeleteDragged: ((IndexPath) -> Void)?
 
     private var dragInProgress = false
 
@@ -57,11 +59,14 @@ private final class BookmarkButton: NSButton, NSDraggingSource {    /// IndexPat
     // MARK: NSDraggingSource
 
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
-        .move
+        [.move, .delete]
     }
 
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
         dragInProgress = false
+        if operation == .delete {
+            onDeleteDragged?(nodePath)
+        }
     }
 
     // MARK: NSDraggingDestination (folder buttons only)
@@ -223,6 +228,7 @@ final class BookmarkBar: NSView {
         }
         button.setContentCompressionResistancePriority(.required, for: .horizontal)
         button.onDropOnFolder = { [weak self] source, folderPath in self?.dropNode(source, into: folderPath) }
+        button.onDeleteDragged = { [weak self] path in self?.deleteDraggedNode(at: path) }
         if isFolder {
             button.registerForDraggedTypes([.featherBookmarkNode])
         }
@@ -406,6 +412,11 @@ final class BookmarkBar: NSView {
     private func dropNode(_ source: IndexPath, into folderPath: IndexPath) {
         guard case .folder(let folder) = Bookmarks.shared.node(at: folderPath) else { return }
         Bookmarks.shared.moveNode(from: source, to: folderPath.appending(folder.children.count))
+    }
+
+    /// Deletes the node dragged off the bar (poof). Deleting a folder deletes its contents.
+    private func deleteDraggedNode(at path: IndexPath) {
+        Bookmarks.shared.removeNode(at: path)
     }
 
     // MARK: - Actions
