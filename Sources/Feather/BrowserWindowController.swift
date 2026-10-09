@@ -17,6 +17,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     private var backButton: NSButton!
     private var forwardButton: NSButton!
     private var reloadButton: NSButton!
+    private var homeButton: NSButton!
     private var shieldButton: NSButton!
     private var newTabButton: NSButton!
     private var starButton: NSButton!
@@ -197,7 +198,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     }
 
     private func showStartPage() {
-        webView?.loadHTMLString(Self.startPage, baseURL: nil)
+        load(Settings.homePageURL)
         window?.title = isPrivate ? "Private Tab" : "New Tab"
         DispatchQueue.main.async { [weak self] in self?.focusAddressBar(nil) }
     }
@@ -286,6 +287,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         static let back = NSToolbarItem.Identifier("back")
         static let forward = NSToolbarItem.Identifier("forward")
         static let reload = NSToolbarItem.Identifier("reload")
+        static let home = NSToolbarItem.Identifier("home")
         static let address = NSToolbarItem.Identifier("address")
         static let shield = NSToolbarItem.Identifier("shield")
         static let newTab = NSToolbarItem.Identifier("newTab")
@@ -299,6 +301,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         backButton = toolbarButton("chevron.left", "Back", #selector(navigateBack(_:)))
         forwardButton = toolbarButton("chevron.right", "Forward", #selector(navigateForward(_:)))
         reloadButton = toolbarButton("arrow.clockwise", "Reload", #selector(reloadPage(_:)))
+        homeButton = toolbarButton("house", "Home", #selector(goHome(_:)))
         shieldButton = toolbarButton("shield.lefthalf.filled", "Shields", #selector(AppDelegate.toggleShields(_:)))
         shieldButton.target = NSApp.delegate
         extensionsButton = toolbarButton("puzzlepiece.extension", "Extensions", #selector(showExtensionsMenu(_:)))
@@ -341,7 +344,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [Item.back, Item.forward, Item.reload, .flexibleSpace, Item.address, Item.star, Item.newTab, .flexibleSpace, Item.pins, Item.pip, Item.extensions, Item.shield]
+        [Item.back, Item.forward, Item.reload, Item.home, .flexibleSpace, Item.address, Item.star, Item.newTab, .flexibleSpace, Item.pins, Item.pip, Item.extensions, Item.shield]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -355,6 +358,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         case Item.back: item.view = backButton; item.label = "Back"
         case Item.forward: item.view = forwardButton; item.label = "Forward"
         case Item.reload: item.view = reloadButton; item.label = "Reload"
+        case Item.home: item.view = homeButton; item.label = "Home"
         case Item.shield: item.view = shieldButton; item.label = "Shields"
         case Item.pins: item.view = extensionPins; item.label = "Pinned Extensions"
         case Item.extensions: item.view = extensionsButton; item.label = "Extensions"
@@ -535,6 +539,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     @objc func reloadPage(_ sender: Any?) {
         guard let webView else { return }
         if webView.isLoading { webView.stopLoading() } else { webView.reload() }
+    }
+
+    /// The Home toolbar button: loads the home page (the search engine's homepage).
+    @objc func goHome(_ sender: Any?) {
+        load(Settings.homePageURL)
     }
 
     @objc func zoomIn(_ sender: Any?) { webView?.pageZoom = min((webView?.pageZoom ?? 1) + 0.1, 3) }
@@ -729,8 +738,6 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     }
 
     // MARK: Built-in pages
-
-    private static let startPage = page(title: "Feather", body: "Type an address or search above. Ads and trackers are blocked.")
 
     private static func page(title: String, body: String) -> String {
         """

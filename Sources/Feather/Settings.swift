@@ -10,7 +10,7 @@ enum Settings {
             "shieldsEnabled": true,
             "httpsOnly": true,
             "suspendMinutes": 10,
-            "searchURL": "https://duckduckgo.com/?q=",
+            "searchURL": "https://www.google.com/search?q=",
         ])
     }
 
@@ -27,7 +27,21 @@ enum Settings {
     /// Background tabs idle longer than this are put to sleep (0 disables).
     static var suspendAfter: TimeInterval { TimeInterval(d.integer(forKey: "suspendMinutes") * 60) }
 
-    static var searchURL: String { d.string(forKey: "searchURL") ?? "https://duckduckgo.com/?q=" }
+    static var searchURL: String { d.string(forKey: "searchURL") ?? "https://www.google.com/search?q=" }
+
+    /// The home page: the search engine's homepage (e.g. https://www.google.com).
+    /// Override with: defaults write dev.feather.browser homeURL "https://example.com"
+    static var homePageURL: URL {
+        if let custom = d.string(forKey: "homeURL"), let url = URL(string: custom) {
+            return url
+        }
+        if let search = URL(string: searchURL),
+           let scheme = search.scheme, let host = search.host,
+           let home = URL(string: "\(scheme)://\(host)") {
+            return home
+        }
+        return URL(string: "https://www.google.com")!
+    }
 
     /// Present as current Safari so sites (YouTube in particular) serve their full, modern experience.
     static let userAgentSuffix: String = {
