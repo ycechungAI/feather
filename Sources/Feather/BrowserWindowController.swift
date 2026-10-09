@@ -441,8 +441,15 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         addressField.currentEditor()?.selectAll(nil)
     }
 
-    /// Pinned extensions sit just left of the PiP button.
+    /// Pinned extensions sit just left of the PiP button. Rebuilt whenever the
+    /// extension list or an action (badge/icon) changes.
     @objc private func rebuildPins() {
+        // ExtensionManager.changed can fire from a background Task; AppKit needs the main thread.
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in self?.rebuildPins() }
+            return
+        }
+        let oldCount = extensionPins.arrangedSubviews.count
         extensionPins.arrangedSubviews.forEach { $0.removeFromSuperview() }
         guard !isPrivate else { return }
         let manager = ExtensionManager.shared
@@ -450,6 +457,20 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
             guard let context = manager.contexts[record.id] else { continue }
             extensionPins.addArrangedSubview(ExtensionPinButton(id: record.id, name: record.name, context: context, tab: self))
         }
+        // NSToolbarItem snapshots its custom view's size at insertion, so when the
+        // button count changes the item must be re-created to pick up the new size.
+        if extensionPins.arrangedSubviews.count != oldCount {
+            refreshPinsItem()
+        }
+    }
+
+    /// Re-inserts the pins toolbar item so it re-measures the (possibly resized) button stack.
+    private func refreshPinsItem() {
+        guard let toolbar = window?.toolbar,
+              let index = toolbar.items.firstIndex(where: { $0.itemIdentifier == Item.pins }) else { return }
+        toolbar.removeItem(at: index)
+        extensionPins.removeFromSuperview() // detach from the removed item before re-inserting
+        toolbar.insertItem(withItemIdentifier: Item.pins, at: index)
     }
 
     @objc private func showExtensionsMenu(_ sender: NSButton) {
