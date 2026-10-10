@@ -173,7 +173,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         webView.uiDelegate = self
         webView.allowsBackForwardNavigationGestures = true
         webView.allowsMagnification = true
-        webView.isInspectable = true
+        // The Web Inspector can read page state (including private windows), so only
+        // expose it to builds run with FEATHER_DEBUG=1.
+        webView.isInspectable = ProcessInfo.processInfo.environment["FEATHER_DEBUG"] != nil
         webArea.addSubview(webView)
         self.webView = webView
 
@@ -603,10 +605,15 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
             return decisionHandler(.cancel)
         }
 
-        // Hand mailto:, facetime:, app links etc. to the system.
+        // `javascript:` must never be honoured as a navigation: a page that manages to
+        // steer one here could otherwise run script outside its own origin.
         let scheme = url.scheme?.lowercased() ?? ""
-        if !["http", "https", "about", "file", "data", "blob", "javascript"].contains(scheme) {
-            NSWorkspace.shared.open(url)
+        if scheme == "javascript" { return decisionHandler(.cancel) }
+
+        // Hand mailto:, facetime:, app links etc. to the system, but only for a real
+        // user click so a page can't silently launch other apps.
+        if !["http", "https", "about", "file", "data", "blob"].contains(scheme) {
+            if action.navigationType == .linkActivated { NSWorkspace.shared.open(url) }
             return decisionHandler(.cancel)
         }
 

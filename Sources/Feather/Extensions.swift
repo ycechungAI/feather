@@ -66,7 +66,18 @@ final class ExtensionManager: NSObject, WKWebExtensionControllerDelegate {
         NotificationCenter.default.post(name: Self.changed, object: nil)
     }
 
+    /// A stored extension file must be a single filename inside our Extensions folder;
+    /// never let a tampered list point outside the sandbox.
+    private static func isSafeFileName(_ name: String) -> Bool {
+        !name.isEmpty && name != "." && name != ".." && !name.contains("/")
+            && name == (name as NSString).lastPathComponent
+    }
+
     private func activate(_ record: InstalledExtension) async {
+        guard Self.isSafeFileName(record.file) else {
+            NSLog("Feather: ignoring extension with unsafe path: \(record.file)")
+            return
+        }
         do {
             let ext = try await WKWebExtension(resourceBaseURL: folder.appendingPathComponent(record.file))
             let context = WKWebExtensionContext(for: ext)
@@ -199,7 +210,8 @@ final class ExtensionManager: NSObject, WKWebExtensionControllerDelegate {
             }
         }
         deactivate(id)
-        if let record = installed.first(where: { $0.id == id }), deleteFiles {
+        if let record = installed.first(where: { $0.id == id }), deleteFiles,
+           Self.isSafeFileName(record.file) {
             try? FileManager.default.removeItem(at: folder.appendingPathComponent(record.file))
         }
         installed.removeAll { $0.id == id }

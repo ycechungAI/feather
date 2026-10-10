@@ -33,7 +33,10 @@ enum Settings {
     /// The home page (default https://www.google.com).
     /// Override with: defaults write dev.feather.browser homeURL "https://example.com"
     static var homePageURL: URL {
-        URL(string: d.string(forKey: "homeURL") ?? "https://www.google.com")!
+        let fallback = URL(string: "https://www.google.com")!
+        guard let raw = d.string(forKey: "homeURL"),
+              let url = URL(string: raw), url.scheme != nil else { return fallback }
+        return url
     }
 
     /// Present as current Safari so sites (YouTube in particular) serve their full, modern experience.

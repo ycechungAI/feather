@@ -52,8 +52,25 @@ enum URLTools {
     }
 
     static func isLocal(_ host: String) -> Bool {
-        host == "localhost" || host.hasSuffix(".localhost") || host.hasSuffix(".local")
-            || host.hasSuffix(".test") || host == "[::1]" || host.hasPrefix("127.")
-            || host.hasPrefix("10.") || host.hasPrefix("192.168.")
+        var h = host.lowercased()
+        if h.hasPrefix("["), h.hasSuffix("]") { h = String(h.dropFirst().dropLast()) }
+        if h == "localhost" || h.hasSuffix(".localhost") || h.hasSuffix(".local") || h.hasSuffix(".test") {
+            return true
+        }
+        // IPv6 loopback (::1), link-local (fe80::/10) and unique-local (fc00::/7).
+        if h.contains(":") {
+            return h == "::1" || h.hasPrefix("fe80:") || h.hasPrefix("fc") || h.hasPrefix("fd")
+        }
+        // IPv4: loopback (127/8), "this network" (0/8), private (10/8, 172.16/12,
+        // 192.168/16) and link-local (169.254/16).
+        let octets = h.split(separator: ".", omittingEmptySubsequences: false)
+        guard octets.count == 4,
+              let a = Int(octets[0]), let b = Int(octets[1]),
+              let c = Int(octets[2]), let d = Int(octets[3]),
+              [a, b, c, d].allSatisfy({ (0...255).contains($0) }) else { return false }
+        return a == 127 || a == 0 || a == 10
+            || (a == 192 && b == 168)
+            || (a == 172 && (16...31).contains(b))
+            || (a == 169 && b == 254)
     }
 }

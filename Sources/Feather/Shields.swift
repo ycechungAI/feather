@@ -30,6 +30,8 @@ final class Shields {
     }
 
     private func finish(_ list: WKContentRuleList?, _ id: String, _ done: () -> Void) {
+        // A failed compile must not disturb the rules still in effect.
+        guard let list else { done(); return }
         ruleList = list
         compiledID = id
         // Drop stale compiled lists from previous blocklist versions.
@@ -94,7 +96,7 @@ final class Shields {
                       "action": ["type": "block"]])
         rules.append(["trigger": ["url-filter": ".*"],
                       "action": ["type": "css-display-none", "selector": Blocklist.cosmeticSelectors.joined(separator: ", ")]])
-        let data = try! JSONSerialization.data(withJSONObject: rules)
+        guard let data = try? JSONSerialization.data(withJSONObject: rules) else { return "[]" }
         return String(decoding: data, as: UTF8.self)
     }
 

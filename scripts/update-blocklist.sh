@@ -6,6 +6,7 @@ set -euo pipefail
 URL="${1:-https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts}"
 DIR="$HOME/Library/Containers/dev.feather.browser/Data/Library/Application Support/Feather"
 mkdir -p "$DIR"
-curl -fsSL "$URL" -o "$DIR/community.txt.tmp"
+# Only fetch over HTTPS (a downgraded or redirected plain-HTTP list could be tampered with).
+curl -fsSL --proto '=https' --tlsv1.2 "$URL" -o "$DIR/community.txt.tmp"
 mv "$DIR/community.txt.tmp" "$DIR/community.txt"
 echo "Saved $(grep -cv '^#' "$DIR/community.txt") lines to $DIR/community.txt"
