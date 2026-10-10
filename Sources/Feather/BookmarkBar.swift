@@ -6,7 +6,7 @@ extension NSPasteboard.PasteboardType {
 }
 
 /// Writes a dragged node's IndexPath to the pasteboard.
-private final class BookmarkNodeDragWriter: NSObject, NSPasteboardWriting {
+final class BookmarkNodeDragWriter: NSObject, NSPasteboardWriting {
     let path: IndexPath
 
     init(path: IndexPath) {
@@ -492,6 +492,7 @@ final class BookmarkBar: NSView {
     }
 
     @objc private func moveNodeTo(_ sender: NSMenuItem) {
+        FolderPopupPresenter.shared.closeAll()
         guard let target = sender.representedObject as? MoveTarget else { return }
         let parent = target.parent
         let count: Int
@@ -519,11 +520,15 @@ final class BookmarkBar: NSView {
 
     private func dropNode(_ source: IndexPath, at rootIndex: Int) {
         Bookmarks.shared.moveNode(from: source, to: IndexPath(index: rootIndex))
+        // Deferred: this runs inside the bar's performDragOperation, and the
+        // popover may be the window holding the drag source.
+        DispatchQueue.main.async { FolderPopupPresenter.shared.closeAll() }
     }
 
     private func dropNode(_ source: IndexPath, into folderPath: IndexPath) {
         guard case .folder(let folder) = Bookmarks.shared.node(at: folderPath) else { return }
         Bookmarks.shared.moveNode(from: source, to: folderPath.appending(folder.children.count))
+        DispatchQueue.main.async { FolderPopupPresenter.shared.closeAll() }
     }
 
     /// Deletes the node dragged off the bar (poof). Deleting a folder deletes its contents.
@@ -534,6 +539,7 @@ final class BookmarkBar: NSView {
     // MARK: - Actions
 
     @objc private func clicked(_ sender: Any?) {
+        FolderPopupPresenter.shared.closeAll()
         let path: IndexPath?
         var newTab = NSApp.currentEvent?.modifierFlags.contains(.command) ?? false
         if let button = sender as? BookmarkButton {
@@ -550,17 +556,18 @@ final class BookmarkBar: NSView {
 
     @objc private func openFolder(_ sender: Any?) {
         guard let button = sender as? BookmarkButton else { return }
-        let menu = folderMenu(at: button.nodePath)
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height + 4), in: button)
+        FolderPopupPresenter.shared.show(folder: button.nodePath, from: button, bookmarkBar: self)
     }
 
     @objc private func openInNewTab(_ sender: NSMenuItem) {
+        FolderPopupPresenter.shared.closeAll()
         guard let path = sender.representedObject as? IndexPath,
               case .bookmark(let b) = Bookmarks.shared.node(at: path) else { return }
         onOpen?(b.url, true)
     }
 
     @objc private func openAllInFolder(_ sender: NSMenuItem) {
+        FolderPopupPresenter.shared.closeAll()
         guard let path = sender.representedObject as? IndexPath,
               case .folder(let folder) = Bookmarks.shared.node(at: path) else { return }
         for b in flattenedBookmarks(in: folder) {
@@ -569,11 +576,13 @@ final class BookmarkBar: NSView {
     }
 
     @objc private func deleteNode(_ sender: NSMenuItem) {
+        FolderPopupPresenter.shared.closeAll()
         guard let path = sender.representedObject as? IndexPath else { return }
         Bookmarks.shared.removeNode(at: path)
     }
 
     @objc private func renameNode(_ sender: NSMenuItem) {
+        FolderPopupPresenter.shared.closeAll()
         guard let path = sender.representedObject as? IndexPath,
               let node = Bookmarks.shared.node(at: path) else { return }
         let alert = NSAlert()
@@ -591,12 +600,14 @@ final class BookmarkBar: NSView {
     }
 
     @objc private func newFolder(_ sender: Any?) {
+        FolderPopupPresenter.shared.closeAll()
         promptForFolderName { name in
             Bookmarks.shared.addFolder(title: name)
         }
     }
 
     @objc private func newFolderWithNode(_ sender: NSMenuItem) {
+        FolderPopupPresenter.shared.closeAll()
         guard let path = sender.representedObject as? IndexPath else { return }
         promptForFolderName { name in
             let folderIndex = Bookmarks.shared.addFolder(title: name)
@@ -605,6 +616,7 @@ final class BookmarkBar: NSView {
     }
 
     @objc private func newSubfolder(_ sender: NSMenuItem) {
+        FolderPopupPresenter.shared.closeAll()
         guard let path = sender.representedObject as? IndexPath else { return }
         promptForFolderName { name in
             Bookmarks.shared.addFolder(title: name, in: path)
@@ -612,11 +624,13 @@ final class BookmarkBar: NSView {
     }
 
     @objc private func moveNodeUp(_ sender: NSMenuItem) {
+        FolderPopupPresenter.shared.closeAll()
         guard let path = sender.representedObject as? IndexPath else { return }
         Bookmarks.shared.moveUp(at: path)
     }
 
     @objc private func moveNodeDown(_ sender: NSMenuItem) {
+        FolderPopupPresenter.shared.closeAll()
         guard let path = sender.representedObject as? IndexPath else { return }
         Bookmarks.shared.moveDown(at: path)
     }
@@ -638,6 +652,56 @@ final class BookmarkBar: NSView {
             }
         }
         if let window { alert.beginSheetModal(for: window, completionHandler: done) } else { done(alert.runModal()) }
+    }
+
+    // MARK: - Folder popup helpers
+
+    /// Opens the bookmark at `path` (used by folder-popup rows).
+    func openBookmark(at path: IndexPath, newTab: Bool) {
+        FolderPopupPresenter.shared.closeAll()
+        guard case .bookmark(let b) = Bookmarks.shared.node(at: path) else { return }
+        onOpen?(b.url, newTab)
+    }
+
+    /// Opens every bookmark inside `folderPath` in background tabs.
+    func openAllInFolder(at folderPath: IndexPath) {
+        FolderPopupPresenter.shared.closeAll()
+        guard case .folder(let folder) = Bookmarks.shared.node(at: folderPath) else { return }
+        for b in flattenedBookmarks(in: folder) {
+            onOpen?(b.url, true)
+        }
+    }
+
+    /// Prompts for a name and creates a subfolder inside `parent`.
+    func createSubfolder(in parent: IndexPath) {
+        FolderPopupPresenter.shared.closeAll()
+        promptForFolderName { name in
+            Bookmarks.shared.addFolder(title: name, in: parent)
+        }
+    }
+
+    /// The context menu for a folder-popup row (same actions as the bar's menus).
+    func rowMenu(for node: BookmarkNode, at path: IndexPath) -> NSMenu {
+        let menu = NSMenu()
+        if node.folder == nil {
+            menu.addItem(withTitle: "Open", action: #selector(clicked(_:)), keyEquivalent: "")
+            menu.addItem(withTitle: "Open in New Tab", action: #selector(openInNewTab(_:)), keyEquivalent: "")
+        } else {
+            menu.addItem(withTitle: "Open All in Tabs", action: #selector(openAllInFolder(_:)), keyEquivalent: "")
+            menu.addItem(withTitle: "New Folder…", action: #selector(newSubfolder(_:)), keyEquivalent: "")
+        }
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Move Up", action: #selector(moveNodeUp(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Move Down", action: #selector(moveNodeDown(_:)), keyEquivalent: "")
+        menu.addItem(.separator())
+        let moveTo = NSMenuItem(title: "Move to", action: nil, keyEquivalent: "")
+        moveTo.submenu = moveToMenu(for: path)
+        menu.addItem(moveTo)
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Rename…", action: #selector(renameNode(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Delete", action: #selector(deleteNode(_:)), keyEquivalent: "")
+        menu.items.forEach { $0.target = self; $0.representedObject = path }
+        return menu
     }
 
     @objc private func showAll(_ sender: NSButton) {
