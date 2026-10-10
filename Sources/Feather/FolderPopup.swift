@@ -1,12 +1,19 @@
 import AppKit
 
-/// Chrome-style bookmark folder popup: an application-defined popover whose rows
-/// support drag-and-drop (reorder within the folder, drag onto the bar, drop into
-/// folder rows to nest) and nested subfolder popovers.
+/// A borderless, non-activating panel used to show folder contents. Unlike
+/// NSPopover, its frame is set explicitly so the width is always correct.
+final class FolderPanel: NSPanel {
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+}
+
+/// Chrome-style bookmark folder popup: a floating panel whose rows support
+/// drag-and-drop (reorder within the folder, drag onto the bar, drop into
+/// folder rows to nest) and nested subfolder popups.
 final class FolderPopupPresenter {
     static let shared = FolderPopupPresenter()
 
-    private(set) var popovers: [NSPopover] = []
+    private(set) var panels: [FolderPanel] = []
     private var monitors: [Any] = []
     weak var bookmarkBar: BookmarkBar?
     private var changedObserver: NSObjectProtocol?
@@ -17,10 +24,10 @@ final class FolderPopupPresenter {
             forName: Bookmarks.changed, object: nil, queue: .main
         ) { [weak self] _ in
             guard let self else { return }
-            // Refresh open popovers in place; explicit actions/outside clicks
+            // Refresh open panels in place; explicit actions/outside clicks
             // close them. Deferred so a drop that triggered the change finishes first.
             DispatchQueue.main.async {
-                self.popovers.forEach { ($0.contentViewController as? FolderListViewController)?.reload() }
+                self.panels.forEach { ($0.contentViewController as? FolderListViewController)?.reload() }
             }
         }
     }
@@ -33,7 +40,7 @@ final class FolderPopupPresenter {
                 return event
             }
             if let window = event.window,
-               self.popovers.contains(where: { $0.contentViewController?.view.window === window }) {
+               self.panels.contains(where: { $0.contentViewController?.view.window === window }) {
                 return event
             }
             self.closeAll()
@@ -49,39 +56,67 @@ final class FolderPopupPresenter {
         self.bookmarkBar = bookmarkBar
         guard anchor.window != nil else { return }
         guard Bookmarks.shared.node(at: folderPath) != nil else { return }
-        if (popovers.last?.contentViewController as? FolderListViewController)?.folderPath == folderPath {
+        if (panels.last?.contentViewController as? FolderListViewController)?.folderPath == folderPath {
             closeAll()
             return
         }
         closeAll()
-        open(folderPath: folderPath, anchor: anchor, edge: .maxY)
+        open(folderPath: folderPath, anchor: anchor, below: true)
     }
 
     /// Opens a nested folder popup to the right of `row`, keeping the ancestors open.
     func openSubfolder(_ folderPath: IndexPath, from row: FolderRowView, keeping controller: FolderListViewController) {
-        guard let parentPop = controller.popover,
-              let index = popovers.firstIndex(where: { $0 === parentPop }) else { return }
-        popovers[(index + 1)...].forEach { $0.close() }
-        popovers.removeSubrange((index + 1)...)
+        guard let parentPanel = controller.panel,
+              let index = panels.firstIndex(where: { $0 === parentPanel }) else { return }
+        panels[(index + 1)...].forEach { $0.orderOut(nil) }
+        panels.removeSubrange((index + 1)...)
         guard Bookmarks.shared.node(at: folderPath) != nil else { return }
-        open(folderPath: folderPath, anchor: row, edge: .maxX)
+        open(folderPath: folderPath, anchor: row, below: false)
     }
 
     func closeAll() {
-        let open = popovers
-        popovers.removeAll()
-        open.forEach { $0.close() }
+        let open = panels
+        panels.removeAll()
+        open.forEach { $0.orderOut(nil) }
     }
 
-    private func open(folderPath: IndexPath, anchor: NSView, edge: NSRectEdge) {
+    private func open(folderPath: IndexPath, anchor: NSView, below: Bool) {
         let controller = FolderListViewController(folderPath: folderPath, presenter: self)
-        controller.updateSize()
-        let popover = NSPopover()
-        popover.behavior = .applicationDefined
-        popover.contentViewController = controller
-        controller.popover = popover
-        popovers.append(popover)
-        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: edge)
+        let size = controller.contentSize
+
+        let panel = FolderPanel(
+            contentRect: NSRect(x: 0, y: 0, width: size.width, height: size.height),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        panel.level = .popUpMenu
+        panel.backgroundColor = .clear
+        panel.isOpaque = false
+        panel.hasShadow = true
+        panel.contentViewController = controller
+        controller.panel = panel
+
+        // Position the panel relative to the anchor on screen.
+        if let window = anchor.window {
+            let anchorFrame = anchor.convert(anchor.bounds, to: nil)
+            let screenFrame = window.convertToScreen(anchorFrame)
+            var origin: NSPoint
+            if below {
+                origin = NSPoint(x: screenFrame.minX, y: screenFrame.minY - size.height - 4)
+            } else {
+                origin = NSPoint(x: screenFrame.maxX + 4, y: screenFrame.maxY - size.height)
+            }
+            if let screen = window.screen {
+                let visible = screen.visibleFrame
+                origin.x = max(visible.minX + 4, min(origin.x, visible.maxX - size.width - 4))
+                origin.y = max(visible.minY + 4, min(origin.y, visible.maxY - size.height - 4))
+            }
+            panel.setFrameOrigin(origin)
+        }
+
+        panels.append(panel)
+        panel.orderFrontRegardless()
     }
 }
 
@@ -89,11 +124,11 @@ final class FolderPopupPresenter {
 final class FolderListViewController: NSViewController {
     let folderPath: IndexPath
     unowned let presenter: FolderPopupPresenter
-    weak var popover: NSPopover?
+    weak var panel: FolderPanel?
 
     private let scroll = NSScrollView()
     private let list = FolderListView()
-    private let footer = NSStackView()
+    private let footer = NSView()
 
     static let rowHeight: CGFloat = 24
     static let footerHeight: CGFloat = 30
@@ -108,78 +143,83 @@ final class FolderListViewController: NSViewController {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    private var rowCount: Int {
+        Bookmarks.shared.node(at: folderPath)?.folder?.children.count ?? 0
+    }
+
+    var contentSize: NSSize {
+        let listHeight = min(CGFloat(max(rowCount, 1)) * Self.rowHeight, Self.maxListHeight)
+        return NSSize(width: Self.width, height: listHeight + Self.footerHeight)
+    }
+
     override func loadView() {
-        let root = NSView()
+        let size = contentSize
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: size.width, height: size.height))
+        root.wantsLayer = true
+        root.layer?.cornerRadius = 6
+        root.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        root.layer?.borderWidth = 0.5
+        root.layer?.borderColor = NSColor.separatorColor.cgColor
+
+        let listHeight = min(CGFloat(max(rowCount, 1)) * Self.rowHeight, Self.maxListHeight)
+
+        scroll.frame = NSRect(x: 0, y: Self.footerHeight, width: Self.width, height: listHeight)
+        scroll.hasVerticalScroller = true
+        scroll.drawsBackground = false
+        scroll.borderType = .noBorder
+        scroll.autoresizingMask = [.width, .height]
 
         list.folderPath = folderPath
         list.presenter = presenter
-        list.translatesAutoresizingMaskIntoConstraints = false
         list.buildRows()
-
         scroll.documentView = list
-        scroll.hasVerticalScroller = true
-        scroll.drawsBackground = false
-        scroll.translatesAutoresizingMaskIntoConstraints = false
-
-        // Size the document view to the scroll view's content area; its height
-        // comes from intrinsicContentSize (grows with the row count).
-        let content = scroll.contentView
+        // Document views need constraints to the scroll view's content area.
+        list.translatesAutoresizingMaskIntoConstraints = false
+        let clip = scroll.contentView
         NSLayoutConstraint.activate([
-            list.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            list.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            list.topAnchor.constraint(equalTo: content.topAnchor),
-            list.bottomAnchor.constraint(greaterThanOrEqualTo: content.bottomAnchor),
+            list.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
+            list.trailingAnchor.constraint(equalTo: clip.trailingAnchor),
+            list.topAnchor.constraint(equalTo: clip.topAnchor),
+            list.bottomAnchor.constraint(greaterThanOrEqualTo: clip.bottomAnchor),
         ])
+        root.addSubview(scroll)
 
-        footer.orientation = .horizontal
-        footer.spacing = 4
-        footer.translatesAutoresizingMaskIntoConstraints = false
+        footer.frame = NSRect(x: 0, y: 0, width: Self.width, height: Self.footerHeight)
+        footer.autoresizingMask = [.width]
 
-        let newButton = NSButton(title: "New Folder…", target: self, action: #selector(newFolder(_:)))
+        let newButton = NSButton(frame: NSRect(x: 4, y: 3, width: 110, height: 24))
+        newButton.title = "New Folder…"
         newButton.bezelStyle = .recessed
         newButton.isBordered = false
         newButton.font = .systemFont(ofSize: 11)
-        let openAll = NSButton(title: "Open All", target: self, action: #selector(openAll(_:)))
+        newButton.target = self
+        newButton.action = #selector(newFolder(_:))
+        newButton.autoresizingMask = [.maxXMargin]
+        footer.addSubview(newButton)
+
+        let openAll = NSButton(frame: NSRect(x: 120, y: 3, width: 90, height: 24))
+        openAll.title = "Open All"
         openAll.bezelStyle = .recessed
         openAll.isBordered = false
         openAll.font = .systemFont(ofSize: 11)
-        footer.addArrangedSubview(newButton)
-        footer.addArrangedSubview(openAll)
+        openAll.target = self
+        openAll.action = #selector(openAll(_:))
+        openAll.autoresizingMask = [.maxXMargin]
+        footer.addSubview(openAll)
 
-        let divider = NSBox()
-        divider.boxType = .separator
-
-        root.addSubview(scroll)
-        root.addSubview(divider)
         root.addSubview(footer)
 
-        NSLayoutConstraint.activate([
-            scroll.topAnchor.constraint(equalTo: root.topAnchor),
-            scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            divider.topAnchor.constraint(equalTo: scroll.bottomAnchor),
-            divider.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            divider.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            footer.topAnchor.constraint(equalTo: divider.bottomAnchor, constant: 4),
-            footer.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 6),
-            footer.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -6),
-            footer.heightAnchor.constraint(equalToConstant: Self.footerHeight - 8),
-            footer.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -4),
-        ])
         view = root
     }
 
     /// Rebuilds the rows from the model (used after in-place changes).
     func reload() {
         list.buildRows()
-        updateSize()
-    }
-
-    func updateSize() {
-        let rows = (Bookmarks.shared.node(at: folderPath)?.folder?.children.count ?? 0)
-        let listHeight = min(CGFloat(max(rows, 1)) * Self.rowHeight, Self.maxListHeight)
-        preferredContentSize = NSSize(width: Self.width, height: listHeight + Self.footerHeight)
-        popover?.contentSize = preferredContentSize
+        let size = contentSize
+        panel?.setFrame(NSRect(x: panel?.frame.origin.x ?? 0, y: panel?.frame.origin.y ?? 0, width: size.width, height: size.height), display: true)
+        view.frame = NSRect(x: 0, y: 0, width: size.width, height: size.height)
+        let listHeight = min(CGFloat(max(rowCount, 1)) * Self.rowHeight, Self.maxListHeight)
+        scroll.frame = NSRect(x: 0, y: Self.footerHeight, width: Self.width, height: listHeight)
     }
 
     @objc private func newFolder(_ sender: Any?) {
@@ -203,7 +243,7 @@ final class FolderListView: NSView {
     override var isFlipped: Bool { true }
 
     override var intrinsicContentSize: NSSize {
-        NSSize(width: NSView.noIntrinsicMetric, height: CGFloat(max(rows.count, 1)) * FolderListViewController.rowHeight)
+        NSSize(width: FolderListViewController.width, height: CGFloat(max(rows.count, 1)) * FolderListViewController.rowHeight)
     }
 
     func buildRows() {
