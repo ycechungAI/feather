@@ -46,29 +46,60 @@ private final class BookmarkButton: NSButton, NSDraggingSource {    /// IndexPat
     var onDeleteDragged: ((IndexPath) -> Void)?
 
     private var dragInProgress = false
+    /// Modifier keys held when this button was last clicked. `NSButton`'s cell
+    /// normally supplies these via `NSApp.currentEvent`; because we perform the
+    /// click ourselves we capture them up front.
+    var clickModifiers: NSEvent.ModifierFlags = []
 
     /// NSButton's cell consumes press-drag events, so mouseDragged never fires.
-    /// Detect the drag here: if the mouse moves past a small threshold it's a
-    /// drag (start a session); otherwise pass through for a normal click.
+    /// Track the press here instead: moving past a small threshold starts a drag
+    /// session, while releasing without moving performs the button's click action.
+    /// We use an explicit `.distantFuture` expiry so `nextEvent` blocks until the
+    /// user actually drags or releases (instead of returning nil immediately).
     override func mouseDown(with event: NSEvent) {
         let start = convert(event.locationInWindow, from: nil)
-        var isDrag = false
-        while let next = window?.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
-            if next.type == .leftMouseUp { break }
-            let p = convert(next.locationInWindow, from: nil)
-            if abs(p.x - start.x) + abs(p.y - start.y) > 4 {
-                isDrag = true
+        var dragEvent: NSEvent?
+        tracking: while let next = window?.nextEvent(
+            matching: [.leftMouseDragged, .leftMouseUp],
+            until: .distantFuture,
+            inMode: .eventTracking,
+            dequeue: true
+        ) {
+            switch next.type {
+            case .leftMouseUp:
+                break tracking
+            case .leftMouseDragged:
+                let p = convert(next.locationInWindow, from: nil)
+                if abs(p.x - start.x) + abs(p.y - start.y) > 4 {
+                    dragEvent = next
+                    break tracking
+                }
+            default:
                 break
             }
         }
-        if isDrag {
+
+        if let dragEvent {
             dragInProgress = true
             let item = NSDraggingItem(pasteboardWriter: BookmarkNodeDragWriter(path: nodePath))
-            item.draggingFrame = bounds
-            beginDraggingSession(with: [item], event: event, source: self)
-        } else {
-            super.mouseDown(with: event)
+            item.setDraggingFrame(bounds, contents: snapshot())
+            beginDraggingSession(with: [item], event: dragEvent, source: self)
+        } else if let action {
+            // The mouse-up was consumed above, so fire the action directly.
+            clickModifiers = event.modifierFlags
+            NSApp.sendAction(action, to: target, from: self)
         }
+    }
+
+    /// A snapshot of the button, used as the drag image while reordering.
+    private func snapshot() -> NSImage {
+        guard let rep = bitmapImageRepForCachingDisplay(in: bounds) else {
+            return NSImage(size: bounds.size)
+        }
+        cacheDisplay(in: bounds, to: rep)
+        let image = NSImage(size: bounds.size)
+        image.addRepresentation(rep)
+        return image
     }
 
     // MARK: NSDraggingSource
@@ -107,10 +138,17 @@ private final class BookmarkButton: NSButton, NSDraggingSource {    /// IndexPat
     }
 }
 
-/// The horizontal stack of bookmark buttons. Accepts drops to reorder root items.
+/// The horizontal stack of bookmark buttons. Accepts drops to reorder root items
+/// and paints a Chrome-style insertion caret while a drag is in progress.
 private final class BookmarkDropStack: NSStackView {
     /// Called with (dragged node path, destination root insertion index).
     var onDrop: ((IndexPath, Int) -> Void)?
+
+    private var indicatorIndex: Int?
+
+    private func hasDraggedNode(_ sender: NSDraggingInfo) -> Bool {
+        sender.draggingPasteboard.types?.contains(.featherBookmarkNode) == true
+    }
 
     private func insertionIndex(for sender: NSDraggingInfo) -> Int {
         let location = convert(sender.draggingLocation, from: nil)
@@ -120,15 +158,55 @@ private final class BookmarkDropStack: NSStackView {
         return arrangedSubviews.count
     }
 
-    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { .move }
+    private func moveIndicator(to index: Int?) {
+        guard indicatorIndex != index else { return }
+        indicatorIndex = index
+        needsDisplay = true
+    }
 
-    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { .move }
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard hasDraggedNode(sender) else { return [] }
+        moveIndicator(to: insertionIndex(for: sender))
+        return .move
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard hasDraggedNode(sender) else { return [] }
+        moveIndicator(to: insertionIndex(for: sender))
+        return .move
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        moveIndicator(to: nil)
+    }
+
+    override func draggingEnded(_ sender: NSDraggingInfo) {
+        moveIndicator(to: nil)
+    }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let index = insertionIndex(for: sender)
+        moveIndicator(to: nil)
         guard let string = sender.draggingPasteboard.string(forType: .featherBookmarkNode),
               let source = BookmarkBar.indexPath(from: string) else { return false }
-        onDrop?(source, insertionIndex(for: sender))
+        onDrop?(source, index)
         return true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard let index = indicatorIndex else { return }
+        let x: CGFloat
+        if index < arrangedSubviews.count {
+            x = arrangedSubviews[index].frame.minX - spacing / 2
+        } else if let last = arrangedSubviews.last {
+            x = last.frame.maxX + spacing / 2
+        } else {
+            x = bounds.midX
+        }
+        let caret = NSRect(x: x - 1, y: 0, width: 2, height: bounds.height)
+        NSColor.controlAccentColor.setFill()
+        NSBezierPath(roundedRect: caret, xRadius: 1, yRadius: 1).fill()
     }
 }
 
@@ -258,6 +336,8 @@ final class BookmarkBar: NSView {
             let moveTo = NSMenuItem(title: "Move to", action: nil, keyEquivalent: "")
             moveTo.submenu = moveToMenu(for: path)
             menu.addItem(moveTo)
+            menu.addItem(.separator())
+            menu.addItem(withTitle: "New Folder…", action: #selector(newSubfolder(_:)), keyEquivalent: "")
         } else {
             menu.addItem(withTitle: "Open in New Tab", action: #selector(openInNewTab(_:)), keyEquivalent: "")
             menu.addItem(withTitle: "Rename…", action: #selector(renameNode(_:)), keyEquivalent: "")
@@ -324,7 +404,24 @@ final class BookmarkBar: NSView {
             openAll.target = self
             openAll.representedObject = childPath
             actions.addItem(openAll)
+
+            let newSub = NSMenuItem(title: "New Folder…", action: #selector(newSubfolder(_:)), keyEquivalent: "")
+            newSub.target = self
+            newSub.representedObject = childPath
+            actions.addItem(newSub)
         }
+
+        actions.addItem(.separator())
+
+        let moveUp = NSMenuItem(title: "Move Up", action: #selector(moveNodeUp(_:)), keyEquivalent: "")
+        moveUp.target = self
+        moveUp.representedObject = childPath
+        actions.addItem(moveUp)
+
+        let moveDown = NSMenuItem(title: "Move Down", action: #selector(moveNodeDown(_:)), keyEquivalent: "")
+        moveDown.target = self
+        moveDown.representedObject = childPath
+        actions.addItem(moveDown)
 
         actions.addItem(.separator())
 
@@ -438,15 +535,16 @@ final class BookmarkBar: NSView {
 
     @objc private func clicked(_ sender: Any?) {
         let path: IndexPath?
+        var newTab = NSApp.currentEvent?.modifierFlags.contains(.command) ?? false
         if let button = sender as? BookmarkButton {
             path = button.nodePath
+            newTab = button.clickModifiers.contains(.command)
         } else if let item = sender as? NSMenuItem {
             path = item.representedObject as? IndexPath
         } else {
             path = nil
         }
         guard let path, case .bookmark(let b) = Bookmarks.shared.node(at: path) else { return }
-        let newTab = NSApp.currentEvent?.modifierFlags.contains(.command) ?? false
         onOpen?(b.url, newTab)
     }
 
@@ -504,6 +602,23 @@ final class BookmarkBar: NSView {
             let folderIndex = Bookmarks.shared.addFolder(title: name)
             Bookmarks.shared.moveNode(from: path, to: IndexPath(indexes: [folderIndex, 0]))
         }
+    }
+
+    @objc private func newSubfolder(_ sender: NSMenuItem) {
+        guard let path = sender.representedObject as? IndexPath else { return }
+        promptForFolderName { name in
+            Bookmarks.shared.addFolder(title: name, in: path)
+        }
+    }
+
+    @objc private func moveNodeUp(_ sender: NSMenuItem) {
+        guard let path = sender.representedObject as? IndexPath else { return }
+        Bookmarks.shared.moveUp(at: path)
+    }
+
+    @objc private func moveNodeDown(_ sender: NSMenuItem) {
+        guard let path = sender.representedObject as? IndexPath else { return }
+        Bookmarks.shared.moveDown(at: path)
     }
 
     private func promptForFolderName(completion: @escaping (String) -> Void) {

@@ -199,6 +199,17 @@ final class Bookmarks {
         return items.count - 1
     }
 
+    /// Appends an empty folder inside the folder at `parentPath` and returns the new
+    /// folder's path. Returns nil when `parentPath` isn't a folder.
+    @discardableResult
+    func addFolder(title: String, in parentPath: IndexPath) -> IndexPath? {
+        guard let folder = node(at: parentPath)?.folder else { return nil }
+        let clean = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let path = parentPath.appending(folder.children.count)
+        insertNode(.folder(BookmarkFolder(title: clean.isEmpty ? "New Folder" : clean, children: [])), at: path)
+        return path
+    }
+
     /// Moves a root item from one position to another.
     func move(from: Int, to: Int) {
         moveNode(from: IndexPath(index: from), to: IndexPath(index: to))
@@ -261,6 +272,37 @@ final class Bookmarks {
             children.insert(node, at: min(max(at.last!, 0), children.count))
         }
         save()
+    }
+
+    /// Moves the node at `path` one position toward the start of its siblings.
+    /// Returns false when it's already first.
+    @discardableResult
+    func moveUp(at path: IndexPath) -> Bool {
+        moveSibling(at: path, by: -1)
+    }
+
+    /// Moves the node at `path` one position toward the end of its siblings.
+    /// Returns false when it's already last.
+    @discardableResult
+    func moveDown(at path: IndexPath) -> Bool {
+        moveSibling(at: path, by: 1)
+    }
+
+    private func moveSibling(at path: IndexPath, by offset: Int) -> Bool {
+        let indexes = path.map { $0 }
+        guard let last = indexes.last else { return false }
+        let parent = Array(indexes.dropLast())
+        let count = parent.isEmpty
+            ? items.count
+            : (node(at: IndexPath(indexes: parent))?.folder?.children.count ?? 0)
+        guard count > 1 else { return false }
+        // `moveNode` takes an insertion point in the pre-move array, so moving
+        // down one place targets the slot two positions along (the removal
+        // shifts everything after the source back by one).
+        let destination = offset < 0 ? last - 1 : last + 2
+        guard destination >= 0, destination <= count else { return false }
+        moveNode(from: path, to: IndexPath(indexes: parent).appending(destination))
+        return true
     }
 
     /// True if the child array at `parentPath` (indexes from the root) exists.

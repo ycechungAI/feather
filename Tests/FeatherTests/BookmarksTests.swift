@@ -224,6 +224,70 @@ final class BookmarksTests: XCTestCase {
         XCTAssertEqual(b.flattenedBookmarks.map { $0.title }, ["Root", "A"])
     }
 
+    // MARK: - Reordering within a folder
+
+    func testMoveUpAndDownAtRoot() {
+        let b = makeBookmarks()
+        ["a", "b", "c"].forEach { b.add(title: $0, url: url("https://\($0).com")) }
+        XCTAssertTrue(b.moveDown(at: IndexPath(index: 0)))
+        XCTAssertEqual(b.items.map { $0.title }, ["b", "a", "c"])
+        XCTAssertTrue(b.moveUp(at: IndexPath(index: 1)))
+        XCTAssertEqual(b.items.map { $0.title }, ["a", "b", "c"])
+        XCTAssertFalse(b.moveUp(at: IndexPath(index: 0)))
+        XCTAssertFalse(b.moveDown(at: IndexPath(index: 2)))
+    }
+
+    func testMoveUpAndDownWithinFolder() {
+        let b = makeBookmarks()
+        let fi = b.addFolder(title: "F")
+        ["x", "y", "z"].forEach { b.add(title: $0, url: url("https://\($0).com")) }
+        for i in 0..<3 {
+            b.moveNode(from: IndexPath(index: 1), to: IndexPath(indexes: [fi, i]))
+        }
+        XCTAssertEqual(b.items[fi].folder?.children.map { $0.title }, ["x", "y", "z"])
+        XCTAssertTrue(b.moveDown(at: IndexPath(indexes: [fi, 0])))
+        XCTAssertEqual(b.items[fi].folder?.children.map { $0.title }, ["y", "x", "z"])
+        XCTAssertTrue(b.moveUp(at: IndexPath(indexes: [fi, 1])))
+        XCTAssertEqual(b.items[fi].folder?.children.map { $0.title }, ["x", "y", "z"])
+        XCTAssertFalse(b.moveUp(at: IndexPath(indexes: [fi, 0])))
+        XCTAssertFalse(b.moveDown(at: IndexPath(indexes: [fi, 2])))
+    }
+
+    func testAddFolderInsideFolder() {
+        let b = makeBookmarks()
+        let fi = b.addFolder(title: "F")
+        let sub = b.addFolder(title: "Sub", in: IndexPath(index: fi))
+        XCTAssertEqual(sub, IndexPath(indexes: [fi, 0]))
+        XCTAssertEqual(b.items[fi].folder?.children.first?.folder?.title, "Sub")
+    }
+
+    func testAddFolderInsideBookmarkIsNoOp() {
+        let b = makeBookmarks()
+        b.add(title: "A", url: url("https://a.com"))
+        XCTAssertNil(b.addFolder(title: "Sub", in: IndexPath(index: 0)))
+        XCTAssertEqual(b.items.count, 1)
+    }
+
+    func testMoveFolderIntoFolder() {
+        let b = makeBookmarks()
+        b.addFolder(title: "One")
+        let two = b.addFolder(title: "Two")
+        b.moveNode(from: IndexPath(index: 0), to: IndexPath(indexes: [two, 0]))
+        XCTAssertEqual(b.items.map { $0.title }, ["Two"])
+        XCTAssertEqual(b.items[0].folder?.children.first?.folder?.title, "One")
+    }
+
+    func testMoveFolderIntoDescendantIsRefused() {
+        let b = makeBookmarks()
+        let fi = b.addFolder(title: "F")
+        b.addFolder(title: "Sub", in: IndexPath(index: fi))
+        // F must not be movable into its own child.
+        b.moveNode(from: IndexPath(index: fi), to: IndexPath(indexes: [fi, 0, 0]))
+        XCTAssertEqual(b.items.count, 1)
+        XCTAssertEqual(b.items[0].folder?.children.first?.folder?.title, "Sub")
+        XCTAssertEqual(b.items[0].folder?.children.first?.folder?.children.count, 0)
+    }
+
     // MARK: - Persistence
 
     func testPersistenceRoundTrip() {
