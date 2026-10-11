@@ -263,15 +263,29 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
 
     /// macOS shows its own confirmation ("Use Feather as your default browser?").
     @objc private func makeDefault(_ sender: Any?) {
+        setDefault(schemes: ["http", "https"])
+    }
+
+    /// Registers each scheme in turn. macOS asks the user to confirm, and choosing a browser for
+    /// `http` usually covers `https` too, so `https` is only set if it still points elsewhere.
+    private func setDefault(schemes: [String]) {
         let app = Bundle.main.bundleURL
-        NSWorkspace.shared.setDefaultApplication(at: app, toOpenURLsWithScheme: "http") { [weak self] error in
+        guard let scheme = schemes.first else { return refreshDefaultBrowser() }
+        let rest = Array(schemes.dropFirst())
+        if let current = NSWorkspace.shared.urlForApplication(toOpen: URL(string: "\(scheme)://example.com")!),
+           current.standardizedFileURL == app.standardizedFileURL {
+            return setDefault(schemes: rest)
+        }
+        NSWorkspace.shared.setDefaultApplication(at: app, toOpenURLsWithScheme: scheme) { [weak self] error in
             DispatchQueue.main.async {
                 if let error {
                     let alert = NSAlert(error: error)
                     alert.informativeText = "You can also choose Feather in System Settings ▸ Desktop & Dock ▸ Default web browser."
                     alert.runModal()
+                    self?.refreshDefaultBrowser()
+                } else {
+                    self?.setDefault(schemes: rest)
                 }
-                self?.refreshDefaultBrowser()
             }
         }
     }
