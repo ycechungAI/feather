@@ -31,7 +31,9 @@ final class SuggestionsPopup: NSObject, NSTableViewDataSource, NSTableViewDelega
         effect.layer?.masksToBounds = true
 
         let column = NSTableColumn(identifier: .init("s"))
+        column.resizingMask = .autoresizingMask
         table.addTableColumn(column)
+        table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
         table.headerView = nil
         table.rowHeight = Self.rowHeight
         table.backgroundColor = .clear

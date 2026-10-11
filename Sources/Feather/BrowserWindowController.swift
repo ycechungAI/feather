@@ -38,6 +38,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     private(set) var isMuted = false
     /// Whether ad blocking is currently applied to this tab's content controller.
     private var shieldsApplied: Bool?
+    /// Set when this blank tab closes itself after handing off a download.
+    private var closingForDownload = false
 
     private var lastActive = Date()
     private var sleepingState: Any?
@@ -396,7 +398,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     func windowWillClose(_ notification: Notification) {
         debugLog("tab closed")
         suggestions.hide()
-        if !isPrivate, let url = currentURL {
+        if !isPrivate, !closingForDownload, let url = currentURL {
             SessionRestore.shared.pushClosed(ClosedTab(url: url, title: baseTitle,
                                                        state: webView?.interactionState ?? sleepingState))
         }
@@ -991,11 +993,21 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     }
 
     func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
-        Downloads.shared.track(download, isPrivate: isPrivate)
+        startedDownload(download, in: webView)
     }
 
     func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+        startedDownload(download, in: webView)
+    }
+
+    /// Tracks the download, and closes this tab if it was opened only for the download (a
+    /// target=_blank link to a file) and never showed a page, as Safari and Chrome do.
+    private func startedDownload(_ download: WKDownload, in webView: WKWebView) {
         Downloads.shared.track(download, isPrivate: isPrivate)
+        guard webView.backForwardList.currentItem == nil, sleepingURL == nil,
+              let window, window.tabbedWindows?.count ?? 1 > 1 else { return }
+        closingForDownload = true
+        DispatchQueue.main.async { window.close() }
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {

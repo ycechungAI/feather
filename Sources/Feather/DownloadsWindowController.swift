@@ -19,6 +19,7 @@ final class DownloadsWindowController: NSWindowController, NSTableViewDataSource
                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
                               backing: .buffered, defer: true)
         window.title = "Downloads"
+        window.tabbingMode = .disallowed // a separate window, never a tab in a browser window
         window.setFrameAutosaveName("FeatherDownloads")
         window.minSize = NSSize(width: 380, height: 220)
         window.isReleasedWhenClosed = false
@@ -37,7 +38,10 @@ final class DownloadsWindowController: NSWindowController, NSTableViewDataSource
 
     private func buildUI() {
         guard let content = window?.contentView else { return }
-        table.addTableColumn(NSTableColumn(identifier: .init("d")))
+        let column = NSTableColumn(identifier: .init("d"))
+        column.resizingMask = .autoresizingMask
+        table.addTableColumn(column)
+        table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
         table.headerView = nil
         table.rowHeight = 52
         table.style = .inset

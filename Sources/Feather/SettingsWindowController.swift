@@ -16,6 +16,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private var removeException: NSButton!
     private let defaultStatus = NSTextField(labelWithString: "")
     private var defaultButton: NSButton!
+    private var grid: NSGridView!
 
     private static let sleepChoices: [(String, Int)] = [
         ("5 minutes", 5), ("10 minutes", 10), ("30 minutes", 30), ("1 hour", 60), ("Never", 0),
@@ -25,6 +26,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 520),
                               styleMask: [.titled, .closable], backing: .buffered, defer: true)
         window.title = "Settings"
+        window.tabbingMode = .disallowed
         window.isReleasedWhenClosed = false
         super.init(window: window)
         buildUI()
@@ -66,7 +68,10 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         let suggestionsNote = note("Sends what you type in the address bar to your search engine. "
                                    + "Matches from your history and bookmarks always stay on this Mac.")
 
-        exceptions.addTableColumn(NSTableColumn(identifier: .init("host")))
+        let hostColumn = NSTableColumn(identifier: .init("host"))
+        hostColumn.resizingMask = .autoresizingMask
+        exceptions.addTableColumn(hostColumn)
+        exceptions.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
         exceptions.headerView = nil
         exceptions.dataSource = self
         exceptions.usesAlternatingRowBackgroundColors = true
@@ -101,7 +106,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         suggestionsBox.alignment = .leading
         suggestionsBox.spacing = 2
 
-        let grid = NSGridView(views: [
+        grid = NSGridView(views: [
             [label("Search engine:"), engine],
             [NSGridCell.emptyContentView, customSearch],
             [label("Home page:"), homeRow],
@@ -156,10 +161,10 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         guard isWindowLoaded else { return }
         if let preset = Settings.searchEngine, let i = SearchEngine.all.firstIndex(of: preset) {
             engine.selectItem(at: i)
-            customSearch.isHidden = true
+            grid.row(at: 1).isHidden = true
         } else {
             engine.selectItem(at: SearchEngine.all.count)
-            customSearch.isHidden = false
+            grid.row(at: 1).isHidden = false
         }
         if window?.firstResponder != customSearch.currentEditor() { customSearch.stringValue = Settings.searchURL }
         if window?.firstResponder != home.currentEditor() { home.stringValue = Settings.homePageURL.absoluteString }
@@ -196,7 +201,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
                 Settings.homePageURL = url
             }
         } else {
-            customSearch.isHidden = false
+            grid.row(at: 1).isHidden = false
             window?.makeFirstResponder(customSearch)
         }
         NotificationCenter.default.post(name: Settings.changed, object: nil)
