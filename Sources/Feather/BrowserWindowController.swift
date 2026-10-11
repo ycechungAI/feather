@@ -4,7 +4,8 @@ import WebKit
 /// One browser tab. Tabs are native macOS window tabs, so the tab bar, drag-to-detach and
 /// Mission Control all come free from the OS with no extra code or memory.
 final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate,
-                                     WKNavigationDelegate, WKUIDelegate, WKWebExtensionTab {
+                                     WKNavigationDelegate, WKUIDelegate, WKWebExtensionTab,
+                                     NSTextFieldDelegate, NSMenuItemValidation {
     static private(set) var all = Set<BrowserWindowController>()
     private static var privateStore: WKWebsiteDataStore?
 
@@ -13,6 +14,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     private let content = NSView()
     private let webArea = NSView()
     private let bookmarkBar = BookmarkBar()
+    private let findBar = FindBar()
+    private var findBarHeight: NSLayoutConstraint!
+    private let suggestions = SuggestionsPopup()
     private let addressField = NSTextField()
     private var backButton: NSButton!
     private var forwardButton: NSButton!
@@ -23,8 +27,17 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     private var starButton: NSButton!
     private var pipButton: NSButton!
     private var extensionsButton: NSButton!
+    private var downloadsButton: NSButton!
     private let extensionPins = NSStackView()
     private var observations: [NSKeyValueObservation] = []
+    private var audioObservation: KVOObserver?
+
+    /// The page title without the 🔊/🔇 prefix.
+    private var baseTitle = ""
+    private(set) var isPlayingAudio = false
+    private(set) var isMuted = false
+    /// Whether ad blocking is currently applied to this tab's content controller.
+    private var shieldsApplied: Bool?
 
     private var lastActive = Date()
     private var sleepingState: Any?
@@ -37,8 +50,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
 
     @discardableResult
     static func open(url: URL?, isPrivate: Bool = false, inTabOf host: NSWindow? = nil,
-                     configuration: WKWebViewConfiguration? = nil, background: Bool = false) -> BrowserWindowController {
-        let tab = BrowserWindowController(isPrivate: isPrivate, configuration: configuration)
+                     configuration: WKWebViewConfiguration? = nil, background: Bool = false,
+                     state: Any? = nil, asleep: SavedTab? = nil) -> BrowserWindowController {
+        let tab = BrowserWindowController(isPrivate: isPrivate, configuration: configuration, asleep: asleep)
         all.insert(tab)
         if let host, let window = tab.window {
             host.addTabbedWindow(window, ordered: .above)
@@ -50,12 +64,74 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
             tab.showWindow(nil)
         }
         if !isPrivate { ExtensionManager.shared.controller.didOpenTab(tab) }
-        if let url {
+        if asleep != nil {
+            // Restored background tab: it loads only when you first switch to it.
+        } else if let state, let webView = tab.webView {
+            webView.interactionState = state
+        } else if let url {
             tab.load(url)
         } else if configuration == nil {
             tab.showStartPage()
         }
+        if !isPrivate { SessionRestore.shared.setNeedsSave() }
         return tab
+    }
+
+    /// ⇧⌘T: brings back the most recently closed tab, with its back/forward history.
+    static func reopenClosedTab() {
+        guard let closed = SessionRestore.shared.popClosed() else { return }
+        open(url: closed.url, inTabOf: frontmost(isPrivate: false)?.window, state: closed.state)
+    }
+
+    /// Reopens saved windows. Only each window's selected tab loads now; the others sleep
+    /// until you switch to them, so restoring many tabs costs almost no memory.
+    static func restore(windows: [SavedWindow]) {
+        for saved in windows where !saved.tabs.isEmpty {
+            let selected = min(max(saved.selected, 0), saved.tabs.count - 1)
+            var host: NSWindow?
+            var selectedTab: BrowserWindowController?
+            for (i, tab) in saved.tabs.enumerated() {
+                let opened = i == selected
+                    ? open(url: tab.url, inTabOf: host, background: host != nil)
+                    : open(url: nil, inTabOf: host, background: host != nil, asleep: tab)
+                if host == nil { host = opened.window }
+                if i == selected { selectedTab = opened }
+            }
+            selectedTab?.window?.makeKeyAndOrderFront(nil)
+        }
+    }
+
+    /// The open normal windows and their tabs, front window first, for the saved session.
+    static func sessionSnapshot() -> [SavedWindow] {
+        var seen = Set<ObjectIdentifier>()
+        var windows: [SavedWindow] = []
+        let ordered = NSApp.orderedWindows.compactMap { $0.windowController as? BrowserWindowController }
+            .filter { !$0.isPrivate && all.contains($0) }
+        let rest = all.filter { !$0.isPrivate && !ordered.contains($0) }
+        for tab in ordered + rest {
+            guard let window = tab.window, !seen.contains(ObjectIdentifier(window)) else { continue }
+            let group = window.tabbedWindows ?? [window]
+            group.forEach { seen.insert(ObjectIdentifier($0)) }
+            let tabs = group.compactMap { $0.windowController as? BrowserWindowController }
+                .filter { all.contains($0) }
+            var saved: [SavedTab] = []
+            var selected = 0
+            for t in tabs {
+                guard let entry = t.savedTab else { continue }
+                if t.window === window.tabGroup?.selectedWindow { selected = saved.count }
+                saved.append(entry)
+            }
+            guard !saved.isEmpty else { continue }
+            windows.append(SavedWindow(tabs: saved, selected: selected))
+        }
+        return windows
+    }
+
+    private var currentURL: URL? { webView?.url ?? sleepingURL }
+
+    private var savedTab: SavedTab? {
+        guard let url = currentURL, ["http", "https", "file"].contains(url.scheme ?? "") else { return nil }
+        return SavedTab(url: url, title: baseTitle)
     }
 
     /// Opens a URL from outside a tab (history, menus) in the frontmost normal window.
@@ -93,7 +169,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
             .first { $0.isPrivate == isPrivate }
     }
 
-    private init(isPrivate: Bool, configuration: WKWebViewConfiguration?) {
+    private init(isPrivate: Bool, configuration: WKWebViewConfiguration?, asleep: SavedTab? = nil) {
         self.isPrivate = isPrivate
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -109,7 +185,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         window.delegate = self
         layoutContent()
         buildToolbar()
-        makeWebView(configuration: configuration)
+        if let asleep {
+            sleepingURL = asleep.url
+            setTitle(asleep.title.isEmpty ? (asleep.url.host ?? "Tab") : asleep.title)
+            refreshButtons()
+        } else {
+            makeWebView(configuration: configuration)
+        }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -117,12 +199,20 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     private func layoutContent() {
         webArea.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(bookmarkBar)
+        content.addSubview(findBar)
         content.addSubview(webArea)
+        findBar.isHidden = true
+        findBarHeight = findBar.heightAnchor.constraint(equalToConstant: 0)
+        findBar.onClose = { [weak self] in self?.closeFindBar(nil) }
         NSLayoutConstraint.activate([
             bookmarkBar.topAnchor.constraint(equalTo: content.topAnchor),
             bookmarkBar.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             bookmarkBar.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            webArea.topAnchor.constraint(equalTo: bookmarkBar.bottomAnchor),
+            findBar.topAnchor.constraint(equalTo: bookmarkBar.bottomAnchor),
+            findBar.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            findBar.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            findBarHeight,
+            webArea.topAnchor.constraint(equalTo: findBar.bottomAnchor),
             webArea.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             webArea.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             webArea.bottomAnchor.constraint(equalTo: content.bottomAnchor),
@@ -154,13 +244,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         config.preferences.javaScriptCanOpenWindowsAutomatically = false
         config.preferences.isElementFullscreenEnabled = true
         // WebKit keeps Picture in Picture off for apps unless this (non-public) preference is set.
-        // Guarded so a future WebKit without it simply skips the call.
-        let pipSelector = NSSelectorFromString("_setAllowsPictureInPictureMediaPlayback:")
-        if config.preferences.responds(to: pipSelector) {
-            config.preferences.perform(pipSelector, with: NSNumber(value: true))
+        // It must be set through KVC: `perform(_:with: NSNumber)` passes a pointer to the BOOL
+        // parameter and leaves PiP off. Guarded so a future WebKit without it skips the call.
+        if config.preferences.responds(to: NSSelectorFromString("_setAllowsPictureInPictureMediaPlayback:")) {
+            config.preferences.setValue(true, forKey: "allowsPictureInPictureMediaPlayback")
         }
         config.allowsAirPlayForMediaPlayback = true
-        Shields.shared.apply(to: config.userContentController, addonInstalls: !isPrivate)
+        Shields.shared.apply(to: config.userContentController, addonInstalls: !isPrivate, host: nil)
+        shieldsApplied = Settings.shieldsActive(for: nil)
         if !isPrivate { config.webExtensionController = ExtensionManager.shared.controller }
         return config
     }
@@ -178,6 +269,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         webView.isInspectable = ProcessInfo.processInfo.environment["FEATHER_DEBUG"] != nil
         webArea.addSubview(webView)
         self.webView = webView
+        findBar.webView = webView
+        if configuration != nil {
+            // A page-opened tab (window.open) arrives with its opener's content rules;
+            // re-check them on its first navigation.
+            shieldsApplied = nil
+        }
 
         observations = [
             webView.observe(\.title) { [weak self] _, _ in MainActor.assumeIsolated { self?.refreshTitle() } },
@@ -191,6 +288,17 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
                 }
             },
         ]
+        // Sound indicator. `_isPlayingAudio` is WebKit's own (non-public, KVO-compliant) flag;
+        // without it the tab simply shows no indicator.
+        if webView.responds(to: NSSelectorFromString("_isPlayingAudio")) {
+            audioObservation = KVOObserver(webView, keyPath: "_isPlayingAudio") { [weak self, weak webView] in
+                guard let self, let webView, webView === self.webView else { return }
+                self.isPlayingAudio = (webView.value(forKey: "_isPlayingAudio") as? Bool) ?? false
+                self.refreshTitle()
+                self.notifyExtensions(.playingAudio)
+            }
+        }
+        if isMuted { applyMute(to: webView) }
         refreshButtons()
         return webView
     }
@@ -202,15 +310,29 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
 
     private func showStartPage() {
         load(Settings.homePageURL)
-        window?.title = isPrivate ? "Private Tab" : "New Tab"
+        setTitle(isPrivate ? "Private Tab" : "New Tab")
         DispatchQueue.main.async { [weak self] in self?.focusAddressBar(nil) }
     }
 
-    func shieldsChanged() {
+    /// Re-applies blocking after a Shields setting changes. `rulesChanged` (new blocklists)
+    /// reloads the visible tab even when blocking stays on.
+    func shieldsChanged(rulesChanged: Bool = false) {
         refreshButtons()
         guard let webView else { return }
-        Shields.shared.apply(to: webView.configuration.userContentController, addonInstalls: !isPrivate)
-        if window?.isKeyWindow == true { webView.reload() }
+        let before = shieldsApplied
+        shieldsApplied = nil // force a fresh apply so a recompiled rule list is picked up
+        applyShields(for: webView.url?.host)
+        if before != shieldsApplied || rulesChanged, window?.isKeyWindow == true { webView.reload() }
+    }
+
+    /// Each tab has its own content controller, so blocking can follow the site you're on.
+    private func applyShields(for host: String?) {
+        guard let webView else { return }
+        let active = Settings.shieldsActive(for: host)
+        guard active != shieldsApplied else { return }
+        Shields.shared.apply(to: webView.configuration.userContentController, addonInstalls: !isPrivate, host: host)
+        shieldsApplied = active
+        refreshButtons()
     }
 
     // MARK: Sleeping tabs
@@ -232,6 +354,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         sleepingState = webView.interactionState
         sleepingURL = webView.url
         observations = []
+        audioObservation = nil
+        if isPlayingAudio { isPlayingAudio = false; refreshTitle() }
         webView.stopLoading()
         webView.removeFromSuperview()
         self.webView = nil
@@ -257,6 +381,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
             wake()
             window?.makeFirstResponder(webView)
         }
+        if !isPrivate { SessionRestore.shared.setNeedsSave() }
         if !isPrivate {
             let controller = ExtensionManager.shared.controller
             controller.didActivateTab(self)
@@ -270,9 +395,16 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
 
     func windowWillClose(_ notification: Notification) {
         debugLog("tab closed")
+        suggestions.hide()
+        if !isPrivate, let url = currentURL {
+            SessionRestore.shared.pushClosed(ClosedTab(url: url, title: baseTitle,
+                                                       state: webView?.interactionState ?? sleepingState))
+        }
         observations = []
+        audioObservation = nil
         webView?.stopLoading()
         Self.all.remove(self)
+        if !isPrivate { SessionRestore.shared.setNeedsSave() }
         if !isPrivate { ExtensionManager.shared.controller.didCloseTab(self) }
         if isPrivate, !Self.all.contains(where: \.isPrivate) {
             Self.privateStore = nil // forget everything from the private session
@@ -298,6 +430,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         static let pip = NSToolbarItem.Identifier("pip")
         static let extensions = NSToolbarItem.Identifier("extensions")
         static let pins = NSToolbarItem.Identifier("pins")
+        static let downloads = NSToolbarItem.Identifier("downloads")
     }
 
     private func buildToolbar() {
@@ -305,8 +438,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         forwardButton = toolbarButton("chevron.right", "Forward", #selector(navigateForward(_:)))
         reloadButton = toolbarButton("arrow.clockwise", "Reload", #selector(reloadPage(_:)))
         homeButton = toolbarButton("house", "Home", #selector(goHome(_:)))
-        shieldButton = toolbarButton("shield.lefthalf.filled", "Shields", #selector(AppDelegate.toggleShields(_:)))
-        shieldButton.target = NSApp.delegate
+        shieldButton = toolbarButton("shield.lefthalf.filled", "Shields", #selector(showShieldsMenu(_:)))
+        downloadsButton = toolbarButton("arrow.down.circle", "Downloads (⌥⌘L)", #selector(AppDelegate.showDownloads(_:)))
+        downloadsButton.target = NSApp.delegate
+        NotificationCenter.default.addObserver(self, selector: #selector(refreshDownloadsButton),
+                                               name: Downloads.changed, object: nil)
         extensionsButton = toolbarButton("puzzlepiece.extension", "Extensions", #selector(showExtensionsMenu(_:)))
         if isPrivate {
             extensionsButton.isEnabled = false
@@ -328,6 +464,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         addressField.cell?.isScrollable = true
         addressField.target = self
         addressField.action = #selector(addressEntered(_:))
+        addressField.delegate = self
+        suggestions.onChoose = { [weak self] suggestion in self?.choose(suggestion) }
 
         let toolbar = NSToolbar(identifier: "FeatherToolbar")
         toolbar.delegate = self
@@ -347,7 +485,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [Item.back, Item.forward, Item.reload, Item.home, .flexibleSpace, Item.address, Item.star, Item.newTab, .flexibleSpace, Item.pins, Item.pip, Item.extensions, Item.shield]
+        [Item.back, Item.forward, Item.reload, Item.home, .flexibleSpace, Item.address, Item.star, Item.newTab, .flexibleSpace, Item.downloads, Item.pins, Item.pip, Item.extensions, Item.shield]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -368,6 +506,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         case Item.pip: item.view = pipButton; item.label = "Picture in Picture"
         case Item.star: item.view = starButton; item.label = "Bookmark"
         case Item.newTab: item.view = newTabButton; item.label = "New Tab"
+        case Item.downloads:
+            item.view = downloadsButton
+            item.label = "Downloads"
+            item.isHidden = !Self.showsDownloadsButton
         case Item.address:
             item.view = addressField
             item.label = "Address"
@@ -384,10 +526,21 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     }
 
     private func refreshTitle() {
-        let title = webView?.title ?? ""
-        window?.title = title.isEmpty ? (webView?.url?.host ?? "New Tab") : title
-        if !isPrivate { History.shared.updateTitle(title, for: webView?.url) }
+        if let webView {
+            let title = webView.title ?? ""
+            setTitle(title.isEmpty ? (webView.url?.host ?? "New Tab") : title)
+            if !isPrivate { History.shared.updateTitle(title, for: webView.url) }
+        } else {
+            setTitle(baseTitle)
+        }
         notifyExtensions(.title)
+    }
+
+    /// Sets the tab's title, with 🔇 when muted or 🔊 while it plays sound.
+    private func setTitle(_ title: String) {
+        baseTitle = title
+        let prefix = isMuted ? "🔇 " : (isPlayingAudio ? "🔊 " : "")
+        window?.title = prefix + title
     }
 
     private func notifyExtensions(_ properties: WKWebExtension.TabChangedProperties) {
@@ -396,11 +549,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     }
 
     private func refreshAddress() {
-        if !isPrivate, let url = webView?.url { History.shared.visit(url, title: webView?.title) }
+        if !isPrivate, let url = webView?.url {
+            History.shared.visit(url, title: webView?.title)
+            SessionRestore.shared.setNeedsSave()
+        }
         notifyExtensions(.URL)
+        refreshButtons()
         guard window?.firstResponder != addressField.currentEditor() else { return }
-        let url = webView?.url
-        addressField.stringValue = (url?.scheme == "about" || url == nil) ? "" : url!.absoluteString
+        refreshAddressField()
         refreshStar()
     }
 
@@ -429,18 +585,199 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         let loading = webView?.isLoading ?? false
         reloadButton.image = NSImage(systemSymbolName: loading ? "xmark" : "arrow.clockwise",
                                      accessibilityDescription: loading ? "Stop" : "Reload")
-        shieldButton.image = NSImage(systemSymbolName: Settings.shieldsEnabled ? "shield.lefthalf.filled" : "shield.slash",
+        let host = webView?.url?.host
+        let active = Settings.shieldsActive(for: host)
+        shieldButton.image = NSImage(systemSymbolName: active ? "shield.lefthalf.filled" : "shield.slash",
                                      accessibilityDescription: "Shields")
-        shieldButton.contentTintColor = Settings.shieldsEnabled ? .controlAccentColor : .secondaryLabelColor
-        shieldButton.toolTip = Settings.shieldsEnabled ? "Shields up: blocking ads & trackers" : "Shields down"
+        shieldButton.contentTintColor = active ? .controlAccentColor : .secondaryLabelColor
+        shieldButton.toolTip = !Settings.shieldsEnabled ? "Shields down everywhere"
+            : active ? "Shields up: blocking ads & trackers" : "Shields down for \(host ?? "this site")"
+    }
+
+    // MARK: Downloads button
+
+    /// Shown while anything downloads, and afterwards until the list is cleared.
+    private static var showsDownloadsButton: Bool { !Downloads.shared.items.isEmpty && downloadsSeenThisRun }
+    private static var downloadsSeenThisRun = false
+
+    @objc private func refreshDownloadsButton() {
+        if Downloads.shared.hasActive { Self.downloadsSeenThisRun = true }
+        let show = Self.showsDownloadsButton
+        downloadsButton.contentTintColor = Downloads.shared.hasActive ? .controlAccentColor : nil
+        if let item = window?.toolbar?.items.first(where: { $0.itemIdentifier == Item.downloads }), item.isHidden == show {
+            item.isHidden = !show
+        }
     }
 
     // MARK: Actions
 
     @objc private func addressEntered(_ sender: NSTextField) {
+        // Return in the address field: a highlighted suggestion wins over the typed text.
+        if let chosen = suggestions.selected { return choose(chosen) }
+        suggestions.hide()
         guard let url = URLTools.resolve(sender.stringValue) else { return }
         load(url)
         window?.makeFirstResponder(webView)
+    }
+
+    private func choose(_ suggestion: Suggestion) {
+        suggestions.hide()
+        addressField.stringValue = suggestion.url.absoluteString
+        load(suggestion.url)
+        window?.makeFirstResponder(webView)
+    }
+
+    // MARK: Address bar suggestions (NSTextFieldDelegate)
+
+    func controlTextDidChange(_ obj: Notification) {
+        guard (obj.object as? NSTextField) === addressField else { return }
+        suggestions.update(query: addressField.stringValue, below: addressField, allowRemote: !isPrivate)
+    }
+
+    func controlTextDidEndEditing(_ obj: Notification) {
+        guard (obj.object as? NSTextField) === addressField else { return }
+        suggestions.hide()
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        guard control === addressField else { return false }
+        switch selector {
+        case #selector(NSResponder.moveDown(_:)): return suggestions.moveSelection(by: 1)
+        case #selector(NSResponder.moveUp(_:)): return suggestions.moveSelection(by: -1)
+        case #selector(NSResponder.cancelOperation(_:)):
+            if suggestions.isVisible { suggestions.hide(); return true }
+            // A second Esc puts back the page's address.
+            refreshAddressField()
+            return true
+        default: return false
+        }
+    }
+
+    private func refreshAddressField() {
+        let url = webView?.url ?? sleepingURL
+        addressField.stringValue = (url?.scheme == "about" || url == nil) ? "" : url!.absoluteString
+    }
+
+    // MARK: Find in page
+
+    @objc func showFindBar(_ sender: Any?) {
+        wake()
+        findBar.webView = webView
+        if findBar.isHidden {
+            findBar.isHidden = false
+            findBarHeight.constant = 32
+        }
+        findBar.activate()
+    }
+
+    @objc func findNextMatch(_ sender: Any?) {
+        if findBar.isHidden { showFindBar(sender) } else { findBar.find(backwards: false) }
+    }
+
+    @objc func findPreviousMatch(_ sender: Any?) {
+        if findBar.isHidden { showFindBar(sender) } else { findBar.find(backwards: true) }
+    }
+
+    @objc func closeFindBar(_ sender: Any?) {
+        guard !findBar.isHidden else { return }
+        findBar.isHidden = true
+        findBarHeight.constant = 0
+        window?.makeFirstResponder(webView)
+        // Clears WebKit's match highlights.
+        webView?.evaluateJavaScript("window.getSelection().removeAllRanges()")
+    }
+
+    // MARK: Sound
+
+    /// View ▸ Mute Tab (⌃⌘M).
+    @objc func toggleMute(_ sender: Any?) {
+        setMuted(!isMuted)
+    }
+
+    func setMuted(_ muted: Bool) {
+        isMuted = muted
+        if let webView { applyMute(to: webView) }
+        refreshTitle()
+        notifyExtensions(.muted)
+    }
+
+    /// Mutes every sound from the page using WebKit's own (non-public) page mute when available,
+    /// otherwise by muting the page's audio and video elements.
+    private func applyMute(to webView: WKWebView) {
+        let selector = NSSelectorFromString("_setPageMuted:")
+        if webView.responds(to: selector) {
+            typealias SetMuted = @convention(c) (AnyObject, Selector, UInt) -> Void
+            let call = unsafeBitCast(webView.method(for: selector), to: SetMuted.self)
+            call(webView, selector, isMuted ? 1 : 0) // 1 = _WKMediaAudioMuted
+        } else {
+            webView.evaluateJavaScript("document.querySelectorAll('audio,video').forEach(m => m.muted = \(isMuted))")
+        }
+    }
+
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        switch item.action {
+        case #selector(toggleMute(_:)):
+            item.title = isMuted ? "Unmute Tab" : "Mute Tab"
+            return webView != nil || sleepingURL != nil
+        case #selector(findNextMatch(_:)), #selector(findPreviousMatch(_:)):
+            return !FindBar.lastQuery.isEmpty || !findBar.isHidden
+        case #selector(closeFindBar(_:)):
+            return !findBar.isHidden
+        default:
+            return true
+        }
+    }
+
+    // MARK: Shields menu
+
+    @objc private func showShieldsMenu(_ sender: NSButton) {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        let rawHost = webView?.url?.host
+        let host = rawHost.map(Shields.exceptionHost)
+        let isWeb = webView?.url.map { $0.scheme == "http" || $0.scheme == "https" } ?? false
+
+        let header = NSMenuItem(title: host.map { "Shields for \($0)" } ?? "Shields", action: nil, keyEquivalent: "")
+        header.isEnabled = false
+        menu.addItem(header)
+
+        let site = NSMenuItem(title: "Block Ads & Trackers on This Site", action: #selector(toggleSiteShields(_:)), keyEquivalent: "")
+        site.target = self
+        site.state = Settings.shieldsActive(for: rawHost) ? .on : .off
+        site.isEnabled = Settings.shieldsEnabled && isWeb && host != nil
+        menu.addItem(site)
+        if Settings.shieldsEnabled, !Settings.shieldsActive(for: rawHost) {
+            let note = NSMenuItem(title: "Turned off for this site", action: nil, keyEquivalent: "")
+            note.isEnabled = false
+            menu.addItem(note)
+        }
+        menu.addItem(.separator())
+        let global = NSMenuItem(title: "Block Ads & Trackers Everywhere", action: #selector(AppDelegate.toggleShields(_:)), keyEquivalent: "")
+        global.target = NSApp.delegate
+        global.state = Settings.shieldsEnabled ? .on : .off
+        menu.addItem(global)
+        let manage = NSMenuItem(title: "Manage Site Exceptions…", action: #selector(AppDelegate.showSettings(_:)), keyEquivalent: "")
+        manage.target = NSApp.delegate
+        menu.addItem(manage)
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
+    }
+
+    /// Turns Shields off (or back on) for the current site, then reloads so the change shows.
+    @objc private func toggleSiteShields(_ sender: Any?) {
+        guard let rawHost = webView?.url?.host else { return }
+        let host = Shields.exceptionHost(for: rawHost)
+        var list = Settings.shieldsAllowlist
+        if Settings.shieldsActive(for: rawHost) {
+            list.append(host)
+        } else {
+            // Remove every entry covering this host (it may have been added as a parent domain).
+            list.removeAll { Shields.isAllowlisted(host: rawHost, in: [$0]) }
+        }
+        Settings.shieldsAllowlist = list
+        NotificationCenter.default.post(name: Settings.changed, object: nil)
+        for tab in Self.all where tab !== self { tab.shieldsChanged() }
+        applyShields(for: rawHost)
+        webView?.reload()
     }
 
     @objc func focusAddressBar(_ sender: Any?) {
@@ -630,6 +967,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
                 webView.load(URLRequest(url: secure))
                 return
             }
+            // Per-site Shields: switch blocking on or off before the new page starts loading.
+            applyShields(for: url.host)
         }
         decisionHandler(.allow)
     }
@@ -652,11 +991,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     }
 
     func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
-        download.delegate = Downloads.shared
+        Downloads.shared.track(download, isPrivate: isPrivate)
     }
 
     func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
-        download.delegate = Downloads.shared
+        Downloads.shared.track(download, isPrivate: isPrivate)
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
@@ -800,6 +1139,13 @@ extension BrowserWindowController {
     func isLoadingComplete(for context: WKWebExtensionContext) -> Bool { !(webView?.isLoading ?? false) }
     func isSelected(for context: WKWebExtensionContext) -> Bool { window?.isKeyWindow ?? false }
     func zoomFactor(for context: WKWebExtensionContext) -> Double { Double(webView?.pageZoom ?? 1) }
+    func isPlayingAudio(for context: WKWebExtensionContext) -> Bool { isPlayingAudio }
+    func isMuted(for context: WKWebExtensionContext) -> Bool { isMuted }
+
+    func setMuted(_ muted: Bool, for context: WKWebExtensionContext, completionHandler: @escaping ((any Error)?) -> Void) {
+        setMuted(muted)
+        completionHandler(nil)
+    }
 
     func activate(for context: WKWebExtensionContext, completionHandler: @escaping ((any Error)?) -> Void) {
         window?.makeKeyAndOrderFront(nil)
@@ -834,5 +1180,27 @@ extension BrowserWindowController {
     func setZoomFactor(_ zoomFactor: Double, for context: WKWebExtensionContext, completionHandler: @escaping ((any Error)?) -> Void) {
         webView?.pageZoom = zoomFactor
         completionHandler(nil)
+    }
+}
+
+/// Observes a key path by name, for WebKit properties that have no Swift key path.
+final class KVOObserver: NSObject {
+    private let object: NSObject
+    private let keyPath: String
+    private let onChange: () -> Void
+
+    init(_ object: NSObject, keyPath: String, onChange: @escaping () -> Void) {
+        self.object = object
+        self.keyPath = keyPath
+        self.onChange = onChange
+        super.init()
+        object.addObserver(self, forKeyPath: keyPath, options: [.new], context: nil)
+    }
+
+    deinit { object.removeObserver(self, forKeyPath: keyPath) }
+
+    override func observeValue(forKeyPath keyPath: String?, of object: Any?,
+                               change: [NSKeyValueChangeKey: Any]?, context: UnsafeMutableRawPointer?) {
+        if Thread.isMainThread { onChange() } else { DispatchQueue.main.async(execute: onChange) }
     }
 }

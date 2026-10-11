@@ -1,7 +1,8 @@
-import XCTest
+import Foundation
+import Testing
 @testable import Feather
 
-final class BookmarksTests: XCTestCase {
+struct BookmarksTests {
     private func tempStore() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
@@ -16,281 +17,281 @@ final class BookmarksTests: XCTestCase {
 
     // MARK: - Basic CRUD
 
-    func testAddBookmark() {
+    @Test func testAddBookmark() {
         let b = makeBookmarks()
         b.add(title: "Example", url: url("https://example.com"))
-        XCTAssertEqual(b.items.count, 1)
-        XCTAssertEqual(b.items.first?.bookmark?.title, "Example")
-        XCTAssertEqual(b.items.first?.bookmark?.url, url("https://example.com"))
+        #expect(b.items.count == 1)
+        #expect(b.items.first?.bookmark?.title == "Example")
+        #expect(b.items.first?.bookmark?.url == url("https://example.com"))
     }
 
-    func testAddUsesHostWhenTitleEmpty() {
+    @Test func testAddUsesHostWhenTitleEmpty() {
         let b = makeBookmarks()
         b.add(title: "", url: url("https://example.com/page"))
-        XCTAssertEqual(b.items.first?.title, "example.com")
+        #expect(b.items.first?.title == "example.com")
     }
 
-    func testAddDuplicateURLIgnored() {
+    @Test func testAddDuplicateURLIgnored() {
         let b = makeBookmarks()
         b.add(title: "A", url: url("https://example.com"))
         b.add(title: "B", url: url("https://example.com"))
-        XCTAssertEqual(b.items.count, 1)
-        XCTAssertEqual(b.items.first?.title, "A")
+        #expect(b.items.count == 1)
+        #expect(b.items.first?.title == "A")
     }
 
-    func testContains() {
+    @Test func testContains() {
         let b = makeBookmarks()
-        XCTAssertFalse(b.contains(url("https://example.com")))
-        XCTAssertFalse(b.contains(nil))
+        #expect(!b.contains(url("https://example.com")))
+        #expect(!b.contains(nil))
         b.add(title: "A", url: url("https://example.com"))
-        XCTAssertTrue(b.contains(url("https://example.com")))
+        #expect(b.contains(url("https://example.com")))
     }
 
-    func testRemoveByURL() {
+    @Test func testRemoveByURL() {
         let b = makeBookmarks()
         b.add(title: "A", url: url("https://a.com"))
         b.add(title: "B", url: url("https://b.com"))
         b.remove(url("https://a.com"))
-        XCTAssertEqual(b.flattenedBookmarks.map { $0.url }, [url("https://b.com")])
+        #expect(b.flattenedBookmarks.map { $0.url } == [url("https://b.com")])
     }
 
-    func testRemoveByURLFindsNestedBookmarks() {
+    @Test func testRemoveByURLFindsNestedBookmarks() {
         let b = makeBookmarks()
         b.add(title: "A", url: url("https://a.com"))
         let fi = b.addFolder(title: "F")
         b.moveNode(from: IndexPath(index: 0), to: IndexPath(indexes: [fi, 0]))
         b.remove(url("https://a.com"))
-        XCTAssertTrue(b.flattenedBookmarks.isEmpty)
+        #expect(b.flattenedBookmarks.isEmpty)
         // The folder itself remains, now empty.
-        XCTAssertEqual(b.items.count, 1)
-        XCTAssertNotNil(b.items.first?.folder)
+        #expect(b.items.count == 1)
+        #expect(b.items.first?.folder != nil)
     }
 
-    func testRemoveAtRoot() {
+    @Test func testRemoveAtRoot() {
         let b = makeBookmarks()
         b.add(title: "A", url: url("https://a.com"))
         b.add(title: "B", url: url("https://b.com"))
         b.remove(at: 0)
-        XCTAssertEqual(b.items.count, 1)
-        XCTAssertEqual(b.items.first?.title, "B")
+        #expect(b.items.count == 1)
+        #expect(b.items.first?.title == "B")
     }
 
-    func testRemoveAtInvalidIndexDoesNothing() {
+    @Test func testRemoveAtInvalidIndexDoesNothing() {
         let b = makeBookmarks()
         b.add(title: "A", url: url("https://a.com"))
         b.remove(at: 5)
         b.remove(at: -1)
-        XCTAssertEqual(b.items.count, 1)
+        #expect(b.items.count == 1)
     }
 
-    func testRenameBookmark() {
+    @Test func testRenameBookmark() {
         let b = makeBookmarks()
         b.add(title: "A", url: url("https://a.com"))
         b.rename(at: 0, to: "Renamed")
-        XCTAssertEqual(b.items.first?.title, "Renamed")
+        #expect(b.items.first?.title == "Renamed")
     }
 
-    func testRenameIgnoresEmptyTitle() {
+    @Test func testRenameIgnoresEmptyTitle() {
         let b = makeBookmarks()
         b.add(title: "A", url: url("https://a.com"))
         b.rename(at: 0, to: "   ")
-        XCTAssertEqual(b.items.first?.title, "A")
+        #expect(b.items.first?.title == "A")
     }
 
     // MARK: - Reordering
 
-    func testMoveRootForward() {
+    @Test func testMoveRootForward() {
         let b = makeBookmarks()
         ["a", "b", "c", "d"].forEach { b.add(title: $0, url: url("https://\($0).com")) }
         b.move(from: 0, to: 3)
-        XCTAssertEqual(b.items.map { $0.title }, ["b", "c", "a", "d"])
+        #expect(b.items.map { $0.title } == ["b", "c", "a", "d"])
     }
 
-    func testMoveRootBackward() {
+    @Test func testMoveRootBackward() {
         let b = makeBookmarks()
         ["a", "b", "c", "d"].forEach { b.add(title: $0, url: url("https://\($0).com")) }
         b.move(from: 3, to: 0)
-        XCTAssertEqual(b.items.map { $0.title }, ["d", "a", "b", "c"])
+        #expect(b.items.map { $0.title } == ["d", "a", "b", "c"])
     }
 
-    func testMoveToSameIndexIsNoOp() {
+    @Test func testMoveToSameIndexIsNoOp() {
         let b = makeBookmarks()
         ["a", "b"].forEach { b.add(title: $0, url: url("https://\($0).com")) }
         b.move(from: 1, to: 1)
-        XCTAssertEqual(b.items.map { $0.title }, ["a", "b"])
+        #expect(b.items.map { $0.title } == ["a", "b"])
     }
 
-    func testMoveWithInvalidSourceDoesNothing() {
+    @Test func testMoveWithInvalidSourceDoesNothing() {
         let b = makeBookmarks()
         b.add(title: "a", url: url("https://a.com"))
         b.move(from: 9, to: 0)
-        XCTAssertEqual(b.items.map { $0.title }, ["a"])
+        #expect(b.items.map { $0.title } == ["a"])
     }
 
     // MARK: - Folders
 
-    func testAddFolder() {
+    @Test func testAddFolder() {
         let b = makeBookmarks()
         let index = b.addFolder(title: "Dev")
-        XCTAssertEqual(index, 0)
-        XCTAssertEqual(b.items.first?.folder?.title, "Dev")
-        XCTAssertEqual(b.items.first?.folder?.children.count, 0)
+        #expect(index == 0)
+        #expect(b.items.first?.folder?.title == "Dev")
+        #expect(b.items.first?.folder?.children.count == 0)
     }
 
-    func testAddFolderBlankTitleGetsDefault() {
+    @Test func testAddFolderBlankTitleGetsDefault() {
         let b = makeBookmarks()
         b.addFolder(title: "   ")
-        XCTAssertEqual(b.items.first?.folder?.title, "New Folder")
+        #expect(b.items.first?.folder?.title == "New Folder")
     }
 
-    func testRenameFolder() {
+    @Test func testRenameFolder() {
         let b = makeBookmarks()
         b.addFolder(title: "Dev")
         b.renameFolder(at: 0, to: "Work")
-        XCTAssertEqual(b.items.first?.folder?.title, "Work")
+        #expect(b.items.first?.folder?.title == "Work")
     }
 
-    func testRenameFolderIgnoresNonFolders() {
+    @Test func testRenameFolderIgnoresNonFolders() {
         let b = makeBookmarks()
         b.add(title: "A", url: url("https://a.com"))
         b.renameFolder(at: 0, to: "Nope")
-        XCTAssertEqual(b.items.first?.title, "A")
-        XCTAssertNil(b.items.first?.folder)
+        #expect(b.items.first?.title == "A")
+        #expect(b.items.first?.folder == nil)
     }
 
-    func testDeleteFolderDeletesContents() {
+    @Test func testDeleteFolderDeletesContents() {
         let b = makeBookmarks()
         let fi = b.addFolder(title: "F")
         b.add(title: "A", url: url("https://a.com"))
         b.moveNode(from: IndexPath(index: 1), to: IndexPath(indexes: [fi, 0]))
-        XCTAssertEqual(b.flattenedBookmarks.count, 1)
+        #expect(b.flattenedBookmarks.count == 1)
         b.removeNode(at: IndexPath(index: fi))
-        XCTAssertTrue(b.items.isEmpty)
-        XCTAssertTrue(b.flattenedBookmarks.isEmpty)
+        #expect(b.items.isEmpty)
+        #expect(b.flattenedBookmarks.isEmpty)
     }
 
-    func testMoveNodeIntoFolder() {
+    @Test func testMoveNodeIntoFolder() {
         let b = makeBookmarks()
         b.add(title: "A", url: url("https://a.com"))
         let fi = b.addFolder(title: "F")
         b.moveNode(from: IndexPath(index: 0), to: IndexPath(indexes: [fi, 0]))
-        XCTAssertEqual(b.items.count, 1)
-        XCTAssertEqual(b.items.first?.folder?.children.map { $0.title }, ["A"])
+        #expect(b.items.count == 1)
+        #expect(b.items.first?.folder?.children.map { $0.title } == ["A"])
     }
 
-    func testMoveNodeOutOfFolder() {
+    @Test func testMoveNodeOutOfFolder() {
         let b = makeBookmarks()
         let fi = b.addFolder(title: "F")
         b.add(title: "A", url: url("https://a.com"))
         b.moveNode(from: IndexPath(index: 1), to: IndexPath(indexes: [fi, 0]))
         b.moveNode(from: IndexPath(indexes: [fi, 0]), to: IndexPath(index: 1))
-        XCTAssertEqual(b.items.map { $0.title }, ["F", "A"])
-        XCTAssertEqual(b.items.first?.folder?.children.count, 0)
+        #expect(b.items.map { $0.title } == ["F", "A"])
+        #expect(b.items.first?.folder?.children.count == 0)
     }
 
-    func testMoveFolderIntoItselfIsRefused() {
+    @Test func testMoveFolderIntoItselfIsRefused() {
         let b = makeBookmarks()
         let fi = b.addFolder(title: "F")
         b.moveNode(from: IndexPath(index: fi), to: IndexPath(indexes: [fi, 0]))
-        XCTAssertEqual(b.items.count, 1)
-        XCTAssertEqual(b.items.first?.folder?.children.count, 0)
+        #expect(b.items.count == 1)
+        #expect(b.items.first?.folder?.children.count == 0)
     }
 
-    func testMoveNodeBetweenFolders() {
+    @Test func testMoveNodeBetweenFolders() {
         let b = makeBookmarks()
         let f1 = b.addFolder(title: "One")
         let f2 = b.addFolder(title: "Two")
         b.add(title: "A", url: url("https://a.com"))
         b.moveNode(from: IndexPath(index: 2), to: IndexPath(indexes: [f1, 0]))
         b.moveNode(from: IndexPath(indexes: [f1, 0]), to: IndexPath(indexes: [f2, 0]))
-        XCTAssertNil(b.node(at: IndexPath(indexes: [f1, 0])))
-        XCTAssertEqual(b.node(at: IndexPath(indexes: [f2, 0]))?.title, "A")
+        #expect(b.node(at: IndexPath(indexes: [f1, 0])) == nil)
+        #expect(b.node(at: IndexPath(indexes: [f2, 0]))?.title == "A")
     }
 
-    func testNodeAtInvalidPathReturnsNil() {
+    @Test func testNodeAtInvalidPathReturnsNil() {
         let b = makeBookmarks()
-        XCTAssertNil(b.node(at: IndexPath(index: 0)))
+        #expect(b.node(at: IndexPath(index: 0)) == nil)
         b.addFolder(title: "F")
-        XCTAssertNil(b.node(at: IndexPath(indexes: [0, 5])))
-        XCTAssertNil(b.node(at: IndexPath()))
+        #expect(b.node(at: IndexPath(indexes: [0, 5])) == nil)
+        #expect(b.node(at: IndexPath()) == nil)
     }
 
-    func testFlattenedBookmarks() {
+    @Test func testFlattenedBookmarks() {
         let b = makeBookmarks()
         b.add(title: "Root", url: url("https://root.com"))
         let fi = b.addFolder(title: "F")
         b.add(title: "A", url: url("https://a.com"))
         b.moveNode(from: IndexPath(index: 2), to: IndexPath(indexes: [fi, 0]))
-        XCTAssertEqual(b.flattenedBookmarks.map { $0.title }, ["Root", "A"])
+        #expect(b.flattenedBookmarks.map { $0.title } == ["Root", "A"])
     }
 
     // MARK: - Reordering within a folder
 
-    func testMoveUpAndDownAtRoot() {
+    @Test func testMoveUpAndDownAtRoot() {
         let b = makeBookmarks()
         ["a", "b", "c"].forEach { b.add(title: $0, url: url("https://\($0).com")) }
-        XCTAssertTrue(b.moveDown(at: IndexPath(index: 0)))
-        XCTAssertEqual(b.items.map { $0.title }, ["b", "a", "c"])
-        XCTAssertTrue(b.moveUp(at: IndexPath(index: 1)))
-        XCTAssertEqual(b.items.map { $0.title }, ["a", "b", "c"])
-        XCTAssertFalse(b.moveUp(at: IndexPath(index: 0)))
-        XCTAssertFalse(b.moveDown(at: IndexPath(index: 2)))
+        #expect(b.moveDown(at: IndexPath(index: 0)))
+        #expect(b.items.map { $0.title } == ["b", "a", "c"])
+        #expect(b.moveUp(at: IndexPath(index: 1)))
+        #expect(b.items.map { $0.title } == ["a", "b", "c"])
+        #expect(!b.moveUp(at: IndexPath(index: 0)))
+        #expect(!b.moveDown(at: IndexPath(index: 2)))
     }
 
-    func testMoveUpAndDownWithinFolder() {
+    @Test func testMoveUpAndDownWithinFolder() {
         let b = makeBookmarks()
         let fi = b.addFolder(title: "F")
         ["x", "y", "z"].forEach { b.add(title: $0, url: url("https://\($0).com")) }
         for i in 0..<3 {
             b.moveNode(from: IndexPath(index: 1), to: IndexPath(indexes: [fi, i]))
         }
-        XCTAssertEqual(b.items[fi].folder?.children.map { $0.title }, ["x", "y", "z"])
-        XCTAssertTrue(b.moveDown(at: IndexPath(indexes: [fi, 0])))
-        XCTAssertEqual(b.items[fi].folder?.children.map { $0.title }, ["y", "x", "z"])
-        XCTAssertTrue(b.moveUp(at: IndexPath(indexes: [fi, 1])))
-        XCTAssertEqual(b.items[fi].folder?.children.map { $0.title }, ["x", "y", "z"])
-        XCTAssertFalse(b.moveUp(at: IndexPath(indexes: [fi, 0])))
-        XCTAssertFalse(b.moveDown(at: IndexPath(indexes: [fi, 2])))
+        #expect(b.items[fi].folder?.children.map { $0.title } == ["x", "y", "z"])
+        #expect(b.moveDown(at: IndexPath(indexes: [fi, 0])))
+        #expect(b.items[fi].folder?.children.map { $0.title } == ["y", "x", "z"])
+        #expect(b.moveUp(at: IndexPath(indexes: [fi, 1])))
+        #expect(b.items[fi].folder?.children.map { $0.title } == ["x", "y", "z"])
+        #expect(!b.moveUp(at: IndexPath(indexes: [fi, 0])))
+        #expect(!b.moveDown(at: IndexPath(indexes: [fi, 2])))
     }
 
-    func testAddFolderInsideFolder() {
+    @Test func testAddFolderInsideFolder() {
         let b = makeBookmarks()
         let fi = b.addFolder(title: "F")
         let sub = b.addFolder(title: "Sub", in: IndexPath(index: fi))
-        XCTAssertEqual(sub, IndexPath(indexes: [fi, 0]))
-        XCTAssertEqual(b.items[fi].folder?.children.first?.folder?.title, "Sub")
+        #expect(sub == IndexPath(indexes: [fi, 0]))
+        #expect(b.items[fi].folder?.children.first?.folder?.title == "Sub")
     }
 
-    func testAddFolderInsideBookmarkIsNoOp() {
+    @Test func testAddFolderInsideBookmarkIsNoOp() {
         let b = makeBookmarks()
         b.add(title: "A", url: url("https://a.com"))
-        XCTAssertNil(b.addFolder(title: "Sub", in: IndexPath(index: 0)))
-        XCTAssertEqual(b.items.count, 1)
+        #expect(b.addFolder(title: "Sub", in: IndexPath(index: 0)) == nil)
+        #expect(b.items.count == 1)
     }
 
-    func testMoveFolderIntoFolder() {
+    @Test func testMoveFolderIntoFolder() {
         let b = makeBookmarks()
         b.addFolder(title: "One")
         let two = b.addFolder(title: "Two")
         b.moveNode(from: IndexPath(index: 0), to: IndexPath(indexes: [two, 0]))
-        XCTAssertEqual(b.items.map { $0.title }, ["Two"])
-        XCTAssertEqual(b.items[0].folder?.children.first?.folder?.title, "One")
+        #expect(b.items.map { $0.title } == ["Two"])
+        #expect(b.items[0].folder?.children.first?.folder?.title == "One")
     }
 
-    func testMoveFolderIntoDescendantIsRefused() {
+    @Test func testMoveFolderIntoDescendantIsRefused() {
         let b = makeBookmarks()
         let fi = b.addFolder(title: "F")
         b.addFolder(title: "Sub", in: IndexPath(index: fi))
         // F must not be movable into its own child.
         b.moveNode(from: IndexPath(index: fi), to: IndexPath(indexes: [fi, 0, 0]))
-        XCTAssertEqual(b.items.count, 1)
-        XCTAssertEqual(b.items[0].folder?.children.first?.folder?.title, "Sub")
-        XCTAssertEqual(b.items[0].folder?.children.first?.folder?.children.count, 0)
+        #expect(b.items.count == 1)
+        #expect(b.items[0].folder?.children.first?.folder?.title == "Sub")
+        #expect(b.items[0].folder?.children.first?.folder?.children.count == 0)
     }
 
     // MARK: - Persistence
 
-    func testPersistenceRoundTrip() {
+    @Test func testPersistenceRoundTrip() {
         let store = tempStore()
         let b = Bookmarks(storeURL: store)
         b.add(title: "A", url: url("https://a.com"))
@@ -299,22 +300,22 @@ final class BookmarksTests: XCTestCase {
         b.moveNode(from: IndexPath(index: 2), to: IndexPath(indexes: [fi, 0]))
 
         let reloaded = Bookmarks(storeURL: store)
-        XCTAssertEqual(reloaded.items, b.items)
+        #expect(reloaded.items == b.items)
     }
 
-    func testMigrationFromFlatJSON() throws {
+    @Test func testMigrationFromFlatJSON() throws {
         let store = tempStore()
         let old = #"[{"title":"A","url":"https://a.com"},{"title":"B","url":"https://b.com"}]"#
         try old.write(to: store, atomically: true, encoding: .utf8)
 
         let b = Bookmarks(storeURL: store)
-        XCTAssertEqual(b.items.count, 2)
-        XCTAssertEqual(b.items.map { $0.title }, ["A", "B"])
-        XCTAssertTrue(b.items.allSatisfy { $0.bookmark != nil })
+        #expect(b.items.count == 2)
+        #expect(b.items.map { $0.title } == ["A", "B"])
+        #expect(b.items.allSatisfy { $0.bookmark != nil })
 
         // The migrated file is rewritten in the new format.
         let json = try String(contentsOf: store, encoding: .utf8)
-        XCTAssertTrue(json.contains("\"kind\""))
+        #expect(json.contains("\"kind\""))
     }
 
     // MARK: - Import / export
@@ -338,27 +339,27 @@ final class BookmarksTests: XCTestCase {
         """
     }
 
-    func testImportHTMLPreservesNestedFolders() {
+    @Test func testImportHTMLPreservesNestedFolders() {
         let b = makeBookmarks()
-        XCTAssertEqual(b.importHTML(nestedHTML), 3)
-        XCTAssertEqual(b.items.count, 2)
+        #expect(b.importHTML(nestedHTML) == 3)
+        #expect(b.items.count == 2)
         let folder = b.items.first?.folder
-        XCTAssertEqual(folder?.title, "Dev")
-        XCTAssertEqual(folder?.children.count, 2)
-        XCTAssertEqual(folder?.children.first?.title, "A")
-        XCTAssertEqual(folder?.children.last?.folder?.title, "Sub")
-        XCTAssertEqual(folder?.children.last?.folder?.children.first?.title, "B")
-        XCTAssertEqual(b.items.last?.title, "C")
+        #expect(folder?.title == "Dev")
+        #expect(folder?.children.count == 2)
+        #expect(folder?.children.first?.title == "A")
+        #expect(folder?.children.last?.folder?.title == "Sub")
+        #expect(folder?.children.last?.folder?.children.first?.title == "B")
+        #expect(b.items.last?.title == "C")
     }
 
-    func testImportHTMLSkipsDuplicates() {
+    @Test func testImportHTMLSkipsDuplicates() {
         let b = makeBookmarks()
         b.add(title: "A", url: url("https://a.com"))
         // B and C are new; A is already present.
-        XCTAssertEqual(b.importHTML(nestedHTML), 2)
+        #expect(b.importHTML(nestedHTML) == 2)
     }
 
-    func testImportHTMLTreatsBookmarksBarAsTransparent() {
+    @Test func testImportHTMLTreatsBookmarksBarAsTransparent() {
         let b = makeBookmarks()
         let html = """
         <DL><p>
@@ -368,27 +369,27 @@ final class BookmarksTests: XCTestCase {
         </DL><p>
         </DL><p>
         """
-        XCTAssertEqual(b.importHTML(html), 1)
-        XCTAssertEqual(b.items.count, 1)
-        XCTAssertEqual(b.items.first?.title, "A")
+        #expect(b.importHTML(html) == 1)
+        #expect(b.items.count == 1)
+        #expect(b.items.first?.title == "A")
     }
 
-    func testExportHTMLContainsFolderStructure() {
+    @Test func testExportHTMLContainsFolderStructure() throws {
         let b = makeBookmarks()
         let fi = b.addFolder(title: "Dev")
         b.add(title: "A", url: url("https://a.com"))
         b.moveNode(from: IndexPath(index: 1), to: IndexPath(indexes: [fi, 0]))
 
         let html = b.exportHTML()
-        XCTAssertTrue(html.contains(">Dev</H3>"))
-        XCTAssertTrue(html.contains("https://a.com"))
+        #expect(html.contains(">Dev</H3>"))
+        #expect(html.contains("https://a.com"))
         // The folder's heading comes before its children.
-        let h3 = try! XCTUnwrap(html.range(of: ">Dev</H3>")?.lowerBound)
-        let link = try! XCTUnwrap(html.range(of: "https://a.com")?.lowerBound)
-        XCTAssertLessThan(h3, link)
+        let h3 = try #require(html.range(of: ">Dev</H3>")?.lowerBound)
+        let link = try #require(html.range(of: "https://a.com")?.lowerBound)
+        #expect(h3 < link)
     }
 
-    func testExportImportRoundTrip() {
+    @Test func testExportImportRoundTrip() {
         let b = makeBookmarks()
         let fi = b.addFolder(title: "Dev")
         b.add(title: "A", url: url("https://a.com"))
@@ -396,8 +397,8 @@ final class BookmarksTests: XCTestCase {
         b.add(title: "C", url: url("https://c.com"))
 
         let b2 = makeBookmarks()
-        XCTAssertEqual(b2.importHTML(b.exportHTML()), 2)
-        XCTAssertEqual(b2.flattenedBookmarks.map { $0.title }, ["A", "C"])
-        XCTAssertEqual(b2.items.first?.folder?.title, "Dev")
+        #expect(b2.importHTML(b.exportHTML()) == 2)
+        #expect(b2.flattenedBookmarks.map { $0.title } == ["A", "C"])
+        #expect(b2.items.first?.folder?.title == "Dev")
     }
 }

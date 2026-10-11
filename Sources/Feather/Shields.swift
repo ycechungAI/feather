@@ -43,19 +43,35 @@ final class Shields {
         done()
     }
 
-    /// Applies or removes blocking on a web view's content controller.
+    /// Applies or removes blocking on a web view's content controller for pages from `host`.
     /// `addonInstalls` adds the "Add to Feather" button on addons.mozilla.org (off in private windows).
-    func apply(to controller: WKUserContentController, addonInstalls: Bool) {
+    func apply(to controller: WKUserContentController, addonInstalls: Bool, host: String?) {
         controller.removeAllContentRuleLists()
         controller.removeAllUserScripts()
         if addonInstalls {
             controller.addUserScript(WKUserScript(source: ExtensionManager.addonsSiteScript,
                                                   injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         }
-        guard Settings.shieldsEnabled else { return }
+        guard Settings.shieldsActive(for: host) else { return }
         if let ruleList { controller.add(ruleList) }
         controller.addUserScript(WKUserScript(source: Blocklist.youtubeScript,
                                               injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+    }
+
+    /// True when `host` or a parent domain of it is in `list` ("example.com" covers "www.example.com").
+    static func isAllowlisted(host: String?, in list: [String]) -> Bool {
+        guard var h = host?.lowercased(), !h.isEmpty else { return false }
+        if h.hasSuffix(".") { h.removeLast() }
+        return list.contains { entry in
+            let e = entry.lowercased()
+            return h == e || h.hasSuffix("." + e)
+        }
+    }
+
+    /// The host a site exception is stored under: the page's host without a leading "www.".
+    static func exceptionHost(for host: String) -> String {
+        let h = host.lowercased()
+        return h.hasPrefix("www.") ? String(h.dropFirst(4)) : h
     }
 
     // MARK: Rule building

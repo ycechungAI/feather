@@ -20,10 +20,7 @@ enum URLTools {
                 return url
             }
         }
-        var allowed = CharacterSet.urlQueryAllowed
-        allowed.remove(charactersIn: "&+=?#")
-        let query = text.addingPercentEncoding(withAllowedCharacters: allowed) ?? text
-        return URL(string: Settings.searchURL + query)
+        return SearchEngine.url(for: text, prefix: Settings.searchURL)
     }
 
     private static let trackingParams: Set<String> = [

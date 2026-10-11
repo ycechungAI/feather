@@ -5,7 +5,9 @@ enum MainMenu {
         let main = NSMenu()
 
         main.addSubmenu("Feather", [
-            item("About Feather", #selector(NSApplication.orderFrontStandardAboutPanel(_:))),
+            item("About Feather", #selector(AppDelegate.showAbout(_:))),
+            .separator(),
+            item("Settings…", #selector(AppDelegate.showSettings(_:)), ","),
             .separator(),
             item("Hide Feather", #selector(NSApplication.hide(_:)), "h"),
             item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option]),
@@ -21,6 +23,7 @@ enum MainMenu {
             item("Open Location…", #selector(BrowserWindowController.focusAddressBar(_:)), "l"),
             .separator(),
             item("Close Tab", #selector(NSWindow.performClose(_:)), "w"),
+            item("Reopen Closed Tab", #selector(AppDelegate.reopenClosedTab(_:)), "t", [.command, .shift]),
             item("Print…", #selector(BrowserWindowController.printPage(_:)), "p"),
         ])
 
@@ -32,6 +35,11 @@ enum MainMenu {
             item("Copy", #selector(NSText.copy(_:)), "c"),
             item("Paste", #selector(NSText.paste(_:)), "v"),
             item("Select All", #selector(NSText.selectAll(_:)), "a"),
+            .separator(),
+            item("Find…", #selector(BrowserWindowController.showFindBar(_:)), "f"),
+            item("Find Next", #selector(BrowserWindowController.findNextMatch(_:)), "g"),
+            item("Find Previous", #selector(BrowserWindowController.findPreviousMatch(_:)), "g", [.command, .shift]),
+            item("Hide Find Bar", #selector(BrowserWindowController.closeFindBar(_:)), "f", [.command, .shift]),
         ])
 
         main.addSubmenu("View", [
@@ -41,6 +49,8 @@ enum MainMenu {
             item("Zoom Out", #selector(BrowserWindowController.zoomOut(_:)), "-"),
             .separator(),
             item("Picture in Picture", #selector(BrowserWindowController.togglePictureInPicture(_:)), "p", [.command, .option]),
+            item("Mute Tab", #selector(BrowserWindowController.toggleMute(_:)), "m", [.command, .control]),
+            item("Downloads", #selector(AppDelegate.showDownloads(_:)), "l", [.command, .option]),
             item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),
         ])
 
@@ -49,6 +59,7 @@ enum MainMenu {
             item("Forward", #selector(BrowserWindowController.navigateForward(_:)), "]"),
             .separator(),
             item("Show All History", #selector(AppDelegate.showHistory(_:)), "y"),
+            item("Reopen Last Session", #selector(AppDelegate.reopenLastSession(_:))),
             item("Clear History…", #selector(AppDelegate.clearHistory(_:)), "\u{8}", [.command, .shift]),
         ])
         history.items.last?.tag = RecentHistoryMenu.marker

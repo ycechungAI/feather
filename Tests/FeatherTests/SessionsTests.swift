@@ -1,7 +1,8 @@
-import XCTest
+import Foundation
+import Testing
 @testable import Feather
 
-final class SessionsTests: XCTestCase {
+struct SessionsTests {
     private func tempStore() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
@@ -16,99 +17,99 @@ final class SessionsTests: XCTestCase {
 
     // MARK: - Save / list
 
-    func testSaveSession() {
+    @Test func testSaveSession() {
         let s = makeSessions()
         let session = s.save(name: "Work", urls: [url("https://a.com"), url("https://b.com")])
-        XCTAssertEqual(s.all.count, 1)
-        XCTAssertEqual(session.name, "Work")
-        XCTAssertEqual(session.urls, [url("https://a.com"), url("https://b.com")])
-        XCTAssertEqual(s.session(id: session.id), session)
+        #expect(s.all.count == 1)
+        #expect(session.name == "Work")
+        #expect(session.urls == [url("https://a.com"), url("https://b.com")])
+        #expect(s.session(id: session.id) == session)
     }
 
-    func testSaveBlankNameGetsDefault() {
+    @Test func testSaveBlankNameGetsDefault() {
         let s = makeSessions()
         let session = s.save(name: "   ", urls: [url("https://a.com")])
-        XCTAssertEqual(session.name, "Untitled Session")
+        #expect(session.name == "Untitled Session")
     }
 
-    func testSaveTrimsName() {
+    @Test func testSaveTrimsName() {
         let s = makeSessions()
         let session = s.save(name: "  Work  ", urls: [])
-        XCTAssertEqual(session.name, "Work")
+        #expect(session.name == "Work")
     }
 
-    func testSaveEmptyURLs() {
+    @Test func testSaveEmptyURLs() {
         let s = makeSessions()
         let session = s.save(name: "Empty", urls: [])
-        XCTAssertTrue(session.urls.isEmpty)
-        XCTAssertEqual(s.all.count, 1)
+        #expect(session.urls.isEmpty)
+        #expect(s.all.count == 1)
     }
 
     // MARK: - Rename
 
-    func testRename() {
+    @Test func testRename() {
         let s = makeSessions()
         let session = s.save(name: "Old", urls: [url("https://a.com")])
         s.rename(session.id, to: "New")
-        XCTAssertEqual(s.session(id: session.id)?.name, "New")
+        #expect(s.session(id: session.id)?.name == "New")
         // URLs untouched.
-        XCTAssertEqual(s.session(id: session.id)?.urls, [url("https://a.com")])
+        #expect(s.session(id: session.id)?.urls == [url("https://a.com")])
     }
 
-    func testRenameIgnoresBlankName() {
+    @Test func testRenameIgnoresBlankName() {
         let s = makeSessions()
         let session = s.save(name: "Keep", urls: [])
         s.rename(session.id, to: "   ")
-        XCTAssertEqual(s.session(id: session.id)?.name, "Keep")
+        #expect(s.session(id: session.id)?.name == "Keep")
     }
 
-    func testRenameUnknownIdDoesNothing() {
+    @Test func testRenameUnknownIdDoesNothing() {
         let s = makeSessions()
         s.save(name: "A", urls: [])
         s.rename(UUID(), to: "B")
-        XCTAssertEqual(s.all.map { $0.name }, ["A"])
+        #expect(s.all.map { $0.name } == ["A"])
     }
 
     // MARK: - Delete
 
-    func testDelete() {
+    @Test func testDelete() {
         let s = makeSessions()
         let a = s.save(name: "A", urls: [url("https://a.com")])
         let b = s.save(name: "B", urls: [url("https://b.com")])
         s.delete(a.id)
-        XCTAssertEqual(s.all.map { $0.id }, [b.id])
-        XCTAssertNil(s.session(id: a.id))
+        #expect(s.all.map { $0.id } == [b.id])
+        #expect(s.session(id: a.id) == nil)
     }
 
-    func testDeleteUnknownIdDoesNothing() {
+    @Test func testDeleteUnknownIdDoesNothing() {
         let s = makeSessions()
         s.save(name: "A", urls: [])
         s.delete(UUID())
-        XCTAssertEqual(s.all.count, 1)
+        #expect(s.all.count == 1)
     }
 
     // MARK: - Persistence
 
-    func testPersistenceRoundTrip() {
+    @Test func testPersistenceRoundTrip() {
         let store = tempStore()
         let s = Sessions(storeURL: store)
         s.save(name: "Work", urls: [url("https://a.com"), url("https://b.com")])
         s.save(name: "Play", urls: [url("https://c.com")])
 
         let reloaded = Sessions(storeURL: store)
-        XCTAssertEqual(reloaded.all, s.all)
+        #expect(reloaded.all == s.all)
     }
 
-    func testStartsEmptyWhenNoFile() {
+    @Test func testStartsEmptyWhenNoFile() {
         let s = makeSessions()
-        XCTAssertTrue(s.all.isEmpty)
+        #expect(s.all.isEmpty)
     }
 
-    func testSessionIdsAreUnique() {
+    @Test func testSessionIdsAreUnique() {
         let s = makeSessions()
         let a = s.save(name: "A", urls: [])
         let b = s.save(name: "A", urls: [])
-        XCTAssertNotEqual(a.id, b.id)
-        XCTAssertEqual(s.all.count, 2)
+        #expect(a.id != b.id)
+        #expect(s.all.count == 2)
     }
 }
