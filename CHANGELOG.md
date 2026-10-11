@@ -26,6 +26,13 @@
 ### Fixed
 - **Picture in Picture was off again:** a later change set WebKit's PiP setting in a way that left it
   disabled. It's set through KVC again, verified with a headless test.
+- **Picture in Picture did nothing (button and extensions):** the App Sandbox blocked the system's
+  PIPAgent, so PiP requests hung silently. Feather now has an exception for that one service only.
+- **PiP finds videos in embedded players** from other sites (church streams, Vimeo, YouTube embeds),
+  and shows a message instead of doing nothing when PiP can't start.
+- **Extensions that can't work in WebKit say so** instead of showing a blank popup. Firefox add-ons
+  that need `webRequestBlocking` (like the full uBlock Origin) are flagged when you install them, when you
+  click their button, and in Manage Extensions. Feather suggests uBlock Origin Lite instead.
 
 ### Changed
 - **Builds:** they work with only the Command Line Tools (native SwiftPM build system, Swift Testing

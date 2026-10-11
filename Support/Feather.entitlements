@@ -10,5 +10,9 @@
 	<key>com.apple.security.device.camera</key><true/>
 	<key>com.apple.security.device.audio-input</key><true/>
 	<key>com.apple.security.print</key><true/>
+	<!-- Picture in Picture: the floating video window is drawn by the system's PIPAgent. Without
+	     this the sandbox silently blocks it and PiP requests hang (built-in button and extensions). -->
+	<key>com.apple.security.temporary-exception.mach-lookup.global-name</key>
+	<array><string>com.apple.PIPAgent</string></array>
 </dict>
 </plist>

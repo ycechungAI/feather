@@ -260,12 +260,40 @@ final class ExtensionManager: NSObject, WKWebExtensionControllerDelegate {
         return lines
     }
 
+    // MARK: Compatibility
+
+    /// Why an extension can't work in WebKit, if we can tell. Firefox add-ons that block requests
+    /// through `webRequestBlocking` (such as the full uBlock Origin) can't: WebKit, like Safari, only
+    /// blocks through `declarativeNetRequest`. Their background page fails and popups stay blank.
+    static func incompatibility(of ext: WKWebExtension) -> String? {
+        let permissions = (ext.manifest["permissions"] as? [Any])?.compactMap { $0 as? String } ?? []
+        guard permissions.contains("webRequestBlocking") else { return nil }
+        var text = "It blocks web requests the Firefox way (webRequestBlocking), which WebKit, the engine Feather and Safari use, doesn't support. It won't work here."
+        if (ext.displayName ?? "").localizedCaseInsensitiveContains("uBlock Origin") {
+            text += "\n\nInstall “uBlock Origin Lite” instead: it's made for this kind of browser. Feather's built-in Shields also block ads and trackers."
+        }
+        return text
+    }
+
+    func incompatibility(for id: String) -> String? {
+        contexts[id].flatMap { Self.incompatibility(of: $0.webExtension) }
+    }
+
+    /// Shown instead of an empty popup when an extension can't work.
+    func explainIncompatibility(_ id: String, window: NSWindow?) -> Bool {
+        guard let reason = incompatibility(for: id) else { return false }
+        let name = installed.first { $0.id == id }?.name ?? "This extension"
+        Self.alert("“\(name)” doesn't work in Feather", reason, window)
+        return true
+    }
+
     private func confirmInstall(_ ext: WKWebExtension, name: String, window: NSWindow?) async -> Bool {
         let lines = Self.describe(ext.requestedPermissions, ext.allRequestedMatchPatterns)
         let alert = NSAlert()
         alert.messageText = "Add “\(name)”?"
         var info = lines.isEmpty ? "It doesn't ask for any special access."
                                  : "It will be able to:\n• " + lines.joined(separator: "\n• ")
+        if let problem = Self.incompatibility(of: ext) { info = "⚠️ " + problem + "\n\n" + info }
         info += "\n\nOnly install extensions you trust. Extensions never run in private windows."
         alert.informativeText = info
         if let icon = ext.icon(for: CGSize(width: 64, height: 64)) { alert.icon = icon }

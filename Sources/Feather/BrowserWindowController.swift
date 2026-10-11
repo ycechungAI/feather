@@ -826,31 +826,109 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     }
 
     /// Pops the page's video into a floating window (or brings it back). Works on any site,
-    /// including YouTube, whose own player hides the browser's built-in PiP option.
+    /// including YouTube, whose own player hides the browser's built-in PiP option, and videos
+    /// inside embedded players from other sites (church streams, Vimeo, YouTube embeds).
     @objc func togglePictureInPicture(_ sender: Any?) {
         guard let webView else { return }
-        webView.callAsyncJavaScript(Self.pipScript, arguments: [:], in: nil, in: .page) { [weak self] result in
-            switch result {
-            case .success(let value as String) where value == "none":
-                self?.showNotice("No video found on this page",
-                                 "Videos inside embedded players from other sites can be popped out from that site directly.")
-            case .success(let value as String) where value.hasPrefix("error:"):
-                self?.showNotice("This video can't play in Picture in Picture", String(value.dropFirst(6)))
-            case .failure(let error):
-                debugLog("pip failed: \(error)")
-            default:
-                break
+        allFrames(of: webView) { [weak self] frames in
+            self?.togglePictureInPicture(in: frames)
+        }
+    }
+
+    private func togglePictureInPicture(in frames: [WKFrameInfo?]) {
+        guard let webView else { return }
+        // Ask every frame what it has, then act in the one frame that matters.
+        var probes: [(frame: WKFrameInfo?, active: Bool, score: Double)] = []
+        let group = DispatchGroup()
+        for frame in frames {
+            group.enter()
+            webView.callAsyncJavaScript(Self.pipProbeScript, arguments: [:], in: frame, in: .page) { result in
+                if case .success(let value as String) = result,
+                   let data = value.data(using: .utf8),
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    probes.append((frame, json["active"] as? Bool ?? false, json["score"] as? Double ?? 0))
+                } else if case .failure(let error) = result {
+                    debugLog("pip probe failed: \(error)")
+                }
+                group.leave()
+            }
+        }
+        group.notify(queue: .main) { [weak self] in
+            guard let self else { return }
+            let target = probes.first(where: \.active) ?? probes.filter { $0.score > 0 }.max { $0.score < $1.score }
+            guard let target else {
+                return self.showNotice("No video found on this page",
+                                       "Start the video playing, then try Picture in Picture again.")
+            }
+            webView.callAsyncJavaScript(Self.pipScript, arguments: [:], in: target.frame, in: .page) { [weak self] result in
+                switch result {
+                case .success(let value as String) where value == "none":
+                    self?.showNotice("No video found on this page", "Start the video playing, then try again.")
+                case .success(let value as String) where value.hasPrefix("error:"):
+                    self?.showNotice("This video can't play in Picture in Picture", String(value.dropFirst(6)))
+                case .success(let value as String) where value == "entered":
+                    self?.confirmPictureInPicture(in: target.frame)
+                case .failure(let error):
+                    self?.showNotice("Picture in Picture didn't start", error.localizedDescription)
+                default:
+                    break
+                }
             }
         }
     }
 
+    /// The page can report success while macOS never shows the floating window; say so instead
+    /// of failing silently.
+    private func confirmPictureInPicture(in frame: WKFrameInfo?) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            guard let webView = self?.webView else { return }
+            webView.callAsyncJavaScript(Self.pipProbeScript, arguments: [:], in: frame, in: .page) { [weak self] result in
+                guard case .success(let value as String) = result, !value.contains("\"active\":true") else { return }
+                self?.showNotice("Picture in Picture didn't start",
+                                 "macOS didn't open the floating window for this video. Try pausing and playing it, then try again.")
+            }
+        }
+    }
+
+    /// The main frame plus every embedded frame, so videos in iframes can be reached.
+    /// Uses WebKit's private frame tree; falls back to just the main frame.
+    private func allFrames(of webView: WKWebView, _ completion: @escaping ([WKFrameInfo?]) -> Void) {
+        let selector = NSSelectorFromString("_frames:")
+        guard webView.responds(to: selector) else { return completion([nil]) }
+        typealias Frames = @convention(c) (AnyObject, Selector, @escaping @convention(block) (NSObject?) -> Void) -> Void
+        let call = unsafeBitCast(webView.method(for: selector), to: Frames.self)
+        call(webView, selector) { root in
+            var frames: [WKFrameInfo?] = []
+            func collect(_ node: NSObject) {
+                if let info = node.value(forKey: "info") as? WKFrameInfo { frames.append(info) }
+                for child in (node.value(forKey: "childFrames") as? [NSObject]) ?? [] { collect(child) }
+            }
+            if let root { collect(root) }
+            DispatchQueue.main.async { completion(frames.isEmpty ? [nil] : frames) }
+        }
+    }
+
     private func showNotice(_ title: String, _ detail: String) {
-        guard let window else { return }
+        guard let window, window.attachedSheet == nil else { return }
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = detail
         alert.beginSheetModal(for: window)
     }
+
+    /// Reports whether this frame has a video in PiP, and how good its best candidate is
+    /// (playing beats paused, bigger beats smaller).
+    private static let pipProbeScript = """
+        const videos = [...document.querySelectorAll('video')];
+        const active = !!document.pictureInPictureElement
+            || videos.some(v => v.webkitPresentationMode === 'picture-in-picture');
+        let score = 0;
+        for (const v of videos) {
+            if (v.readyState === 0 || v.offsetWidth === 0 || v.offsetHeight === 0) continue;
+            score = Math.max(score, v.offsetWidth * v.offsetHeight + (v.paused ? 0 : 1e9));
+        }
+        return JSON.stringify({active, score});
+        """
 
     private static let pipScript = """
         const active = document.pictureInPictureElement
