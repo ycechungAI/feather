@@ -77,6 +77,10 @@ final class ExtensionMenu: NSObject, NSMenuDelegate {
         let options = NSMenu()
         options.autoenablesItems = false
         guard let record = manager.installed.first(where: { $0.id == id }) else { return options }
+        if manager.incompatibility(for: id) != nil {
+            options.addItem(actionItem("⚠️ Doesn't Work in Feather…", #selector(explainProblem(_:)), id))
+            options.addItem(.separator())
+        }
         let pin = actionItem("Pin to Toolbar", #selector(togglePinned(_:)), id)
         pin.state = record.pinned ? .on : .off
         options.addItem(pin)
@@ -109,7 +113,13 @@ final class ExtensionMenu: NSObject, NSMenuDelegate {
 
     @objc private func runAction(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String, let context = manager.contexts[id] else { return }
+        if manager.explainIncompatibility(id, window: tab?.window) { return }
         context.performAction(for: tab)
+    }
+
+    @objc private func explainProblem(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        _ = manager.explainIncompatibility(id, window: tab?.window)
     }
 
     @objc private func installCurrentAddon(_ sender: NSMenuItem) {
@@ -216,6 +226,7 @@ final class ExtensionPinButton: NSButton {
     }
 
     @objc private func clicked(_ sender: Any?) {
+        if ExtensionManager.shared.explainIncompatibility(id, window: window) { return }
         ExtensionManager.shared.popupAnchor = self
         context?.performAction(for: tab)
     }

@@ -1,6 +1,8 @@
 # Feather
 
-A tiny macOS browser (~320 KB). Feather adds no rendering engine of its own: it uses the WebKit engine
+**Version 0.2.0** · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md)
+
+A tiny macOS browser (about 1 MB). Feather adds no rendering engine of its own: it uses the WebKit engine
 built into macOS (the same one Safari uses), so it gets web-standards and security updates through
 macOS updates.
 
@@ -11,6 +13,32 @@ macOS updates.
 - **Efficient video:** uses Apple's hardware video decoders.
 - **Safety:** App Sandbox (pages can't reach your files), HTTPS-only mode, fraudulent-site warnings,
   Gatekeeper quarantine on downloads, tracking parameters removed from URLs, private windows.
+
+## Everyday browsing
+- **Find on page (⌘F):** type to highlight matches. Return or ⌘G goes to the next match, ⇧Return or
+  ⇧⌘G to the previous one, Esc closes the bar.
+- **Address bar suggestions:** as you type, matching pages from your history and bookmarks appear
+  below the address bar. Use ↑/↓ and Return, or click one. Search-engine suggestions are off by default,
+  because they send what you type to the search engine. Turn them on in Settings.
+- **Reopen closed tab (⇧⌘T):** brings back up to 20 recently closed tabs, with their back/forward history.
+- **Restore last session:** your tabs come back after you quit, restart or crash. Only the tab you were
+  looking at in each window loads right away; the others load when you click them, so restoring
+  costs almost no memory. Turn this off in Settings, then use **History ▸ Reopen Last Session**
+  when you want it.
+- **Sound indicator & mute:** tabs playing sound show 🔊 in their title. **View ▸ Mute Tab (⌃⌘M)**
+  silences a tab (🔇) until you unmute it.
+- **Downloads (⌥⌘L):** progress, cancel, Show in Finder, open, and a list of your last 50 downloads.
+  A downloads button appears in the toolbar while files download. Clearing the list leaves the files
+  in your Downloads folder.
+
+## Shields per site
+Click the shield in the toolbar:
+- **Block Ads & Trackers on This Site:** untick it when a site breaks or asks you to turn off your
+  ad blocker. The page reloads without blocking, and the shield icon shows a slash for that site.
+  The setting covers the whole site, including subdomains (for example, `example.com` also covers
+  `www.example.com`).
+- **Block Ads & Trackers Everywhere** turns Shields off or on for every site.
+- **Manage Site Exceptions…** lists the sites where Shields are off, in Settings.
 
 ## Bookmarks
 - ☆ next to the address bar (or ⌘D) saves the page to the bookmark bar, which is always shown.
@@ -57,17 +85,39 @@ Software Update ▸ Automatic Updates** turned on, and Feather is patched withou
 
 ## What it does NOT do
 No telemetry, no accounts, no background processes, no login items, and no network calls of its own.
+The one exception is search suggestions, which are off unless you turn them on in Settings.
 It runs only when you open it. All source code is in `Sources/Feather`.
 
 ## Build & run
     scripts/build-app.sh              # creates build/Feather.app
     scripts/build-app.sh --install    # also copies it to /Applications
     open build/Feather.app
+    scripts/test.sh                   # runs the unit tests
+
+Only the Xcode Command Line Tools are needed, not full Xcode. The scripts use SwiftPM's native build
+system because the newer default one fails with "Unknown error parsing property list" with the
+Command Line Tools in Swift 6.4. The tests use Swift Testing, which the Command Line Tools include
+(XCTest needs full Xcode). `swift scripts/make-icon.swift` redraws the app icon.
+
+Building on an ExFAT or FAT drive works: the build script removes the hidden `._*` files that macOS
+creates on those drives, which would otherwise break the app's signature.
 
 ## Optional: bigger blocklist
     scripts/update-blocklist.sh       # downloads the StevenBlack hosts list
 Then choose **Shields ▸ Reload Blocklists**.
 
-## Settings (Terminal)
-    defaults write dev.feather.browser searchURL "https://www.google.com/search?q="
+## Settings (⌘,)
+**Feather ▸ Settings** covers:
+- Search engine: Google, DuckDuckGo, Bing, Brave Search, Startpage, or a custom search URL.
+- Home page.
+- How long background tabs wait before sleeping.
+- Shields and HTTPS-Only Mode.
+- Search suggestions.
+- Restoring tabs on launch.
+- Sites with Shields off.
+- A button to make Feather your default browser (macOS asks you to confirm).
+
+Changes take effect right away. The same values can still be set from Terminal, for example:
+
+    defaults write dev.feather.browser searchURL "https://duckduckgo.com/?q="
     defaults write dev.feather.browser suspendMinutes -int 20

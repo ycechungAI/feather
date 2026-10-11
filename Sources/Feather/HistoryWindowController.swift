@@ -22,6 +22,7 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
                               backing: .buffered, defer: true)
         window.title = "History"
+        window.tabbingMode = .disallowed
         window.setFrameAutosaveName("FeatherHistory")
         window.minSize = NSSize(width: 480, height: 300)
         window.isReleasedWhenClosed = false
