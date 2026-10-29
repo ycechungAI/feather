@@ -34,7 +34,7 @@ from the Swift sources. It has:
   editing, drag and drop, context menus or ⌘-click into a new tab, and it doesn't reload when
   the file changes.
 
-**Still missing compared with the Swift build:** history, extensions, settings, downloads,
+**Still missing compared with the Swift build** (the full, ordered plan is in [PORTING.md](PORTING.md)): history, extensions, settings, downloads,
 address-bar suggestions, find in page, session restore and ⇧⌘T, tab sleep, the cache limiter,
 private windows, the Shields menu and per-site exceptions, HTTPS-only and HTTPS upgrades,
 tracking-parameter stripping, mute and the sound indicator, zoom, print, bookmark editing and

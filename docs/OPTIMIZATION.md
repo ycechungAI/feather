@@ -4,6 +4,37 @@ Measured on 2026-10-29 on this Mac, with the release build. Memory is resident m
 Feather and the WebKit processes it started, 75 seconds after opening a 4K YouTube video
 (Big Buck Bunny, `aqz-KE-bpKQ`). Numbers vary by about ±5% between runs.
 
+## Feather vs Safari and Brave
+Measured on the same Mac (Apple M4, 16 GB, macOS 27.0.1) on 29 October 2026, with
+[bench/bench.py](../bench/bench.py). Memory is the "Memory" figure Activity Monitor shows, summed
+over the browser and all of its helper processes. Each figure comes from one run.
+
+| | Feather | Safari | Brave |
+|---|---|---|---|
+| App on disk | **1.1 MB** | built into macOS | 604 MB |
+| Data written during the test | **64 MB** | not separable | 144 MB |
+| Launch to a page on screen | **0.70 s** | 1.77 s | 0.87 s |
+| Memory with 1 tab | **145 MB** | 289 MB | 593 MB |
+| Memory with 6 busy sites open | 1.28 GB | **1.09 GB** | 1.78 GB |
+| CPU with those 6 tabs left alone | 68% | **4%** | 143% |
+| Speedometer 3.1 (responsiveness, higher is better) | 27.0 | not measured | **28.8** |
+
+- The six sites are Wikipedia, GitHub, CNN, Reddit, Amazon and YouTube, measured a minute after
+  opening.
+- Brave ran with a fresh, empty profile. Safari ran with the everyday profile (it has no separate
+  profiles), which may slow its launch.
+- Speedometer couldn't run in Safari without turning on Safari's remote automation. Safari uses the
+  same WebKit engine as Feather.
+- **Finding (on hold):** Feather's high CPU with the six tabs comes from **CNN's page**. Measured
+  one site at a time, CNN alone drove WebKit's networking process to about 51% (82% in total),
+  while Wikipedia, GitHub, Reddit, Amazon and YouTube each stayed under 1%. It happened with Shields
+  off too, so it's the page's own activity, not Feather's blocker. An earlier note blaming the
+  blocking rules was wrong: those runs only looked calm by chance. Safari's 4% was probably a
+  quieter moment on CNN. Paused, since memory matters more than CPU and the cause is the site.
+- Page-load times are left out on purpose. WebKit fires the page's load event later than Chromium
+  does (Wikipedia was readable after about 0.3 s but reported "loaded" at 3.4 s), so load-event
+  times make WebKit look up to 10× slower than it feels.
+
 ## Where the memory goes
 
 | Process | Memory | What it is |

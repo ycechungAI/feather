@@ -1,10 +1,27 @@
 # Feather
 
+> **Branch `rust-prototype`:** this branch also holds a Rust prototype of Feather in [`rust/`](rust/).
+> The rest of this README describes the Swift build on `main`. What the Rust build still needs to
+> match it is in [rust/PORTING.md](rust/PORTING.md), and its measurements are in
+> [rust/RESULTS.md](rust/RESULTS.md).
+
 **Version 0.2.0** · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md)
 
 A tiny macOS browser (about 1 MB). Feather adds no rendering engine of its own: it uses the WebKit engine
 built into macOS (the same one Safari uses), so it gets web-standards and security updates through
 macOS updates.
+
+## How it compares
+| | Feather | Safari | Brave |
+|---|---|---|---|
+| App size | **1.1 MB** | built into macOS | 604 MB |
+| Memory, 1 tab | **145 MB** | 289 MB | 593 MB |
+| Memory, 6 busy sites | 1.28 GB | **1.09 GB** | 1.78 GB |
+| Launch to page | **0.70 s** | 1.77 s | 0.87 s |
+| Speedometer 3.1 | 27.0 | same engine as Feather | **28.8** |
+
+Apple M4, macOS 27, October 2026. Full results and method:
+[docs/OPTIMIZATION.md](docs/OPTIMIZATION.md#feather-vs-safari-and-brave).
 
 ## What it does
 - **Ad & tracker blocking:** WebKit content rules compiled to native code, plus YouTube ad skipping.
@@ -31,6 +48,14 @@ macOS updates.
   when you want it.
 - **Picture in Picture:** the PiP button next to Home floats the page's video, on any site, including
   YouTube and embedded players. If a YouTube ad closes the floating window, Feather reopens it.
+- **Download video (⌥⌘S):** the ⤓ button next to PiP saves the page's video while it plays, into
+  Downloads. Plain video files download as they are. HLS streams (most sites) are saved part by
+  part with your login for the site, as an `.mp4`, or as a `.ts` for older streams (`.ts` plays in
+  IINA or VLC, not QuickTime). Live streams record until you cancel them in Downloads. Encrypted or
+  DRM-protected videos and DASH streams (picture and sound sent separately) can't be saved.
+- **Subtitles:** the speech-bubble button lists the video's own subtitle tracks, including subtitles
+  stored inside an MP4 or HLS stream, so you can turn them on or off. **Load Subtitle File…** adds an `.srt` or `.vtt` file to any video, also from the View menu.
+  Players that draw their own captions (YouTube) use their own CC button.
 - **Sound indicator & mute:** tabs playing sound show 🔊 in their title. **View ▸ Mute Tab (⌃⌘M)**
   silences a tab (🔇) until you unmute it.
 - **Downloads (⌥⌘L):** progress, cancel, Show in Finder, open, and a list of your last 50 downloads.
@@ -61,6 +86,42 @@ Click the shield in the toolbar:
 - **Sessions ▸ Save Tabs as Session…** saves the frontmost window's tabs under a name you choose.
 - Reopen a session later from the Sessions menu: **Restore** opens its tabs in the frontmost window
   (or a new window). Each session also offers **Rename…** and **Delete**.
+
+## Tabs
+Feather draws its own tab strip under the toolbar, like Chrome and Brave.
+- Tabs have a fixed width from the left and shrink only when the window is full; past that, the »
+  button at the right lists every tab. **+** (or ⌘T, or double-clicking empty strip space) opens a tab.
+- **Close:** the × on a tab, a middle click, or ⌘W (the tab, not the window; ⇧⌘W closes the window).
+- **Switch:** click, ⌘1–⌘8 (⌘9 is the last tab), ⌃Tab / ⌃⇧Tab, or ⇧⌘[ / ⇧⌘].
+- **Move:** drag a tab along the strip to reorder it. Drag it off the strip to give it its own window,
+  or onto another Feather window to move it there. Window ▸ Move Tab to New Window does the same.
+- **Right-click a tab** for New Tab, Reload, Mute, **Pin Tab**, **Add Tab to Group** (or New Group…),
+  Remove from Group, Close Tab, Close Other Tabs and Move Tab to New Window.
+- **Pinned tabs** are narrow, at the left, and show only a site badge (the site's first letter).
+  Close Other Tabs keeps them, closing one asks first, and pins are saved with the session.
+- Only the selected tab's page is in the window. Other tabs' pages are set aside, so WebKit slows
+  their timers and drawing, and idle ones sleep (their page is freed) until you click them.
+
+## Tab groups
+- **Tab Groups ▸ New Group from Window's Tabs…** or **New Group from Current Tab…** asks for a name
+  and a color. Groups are saved in `tab-groups.json` and survive quitting.
+- **Add Current Tab to Group** and **Remove Current Tab from Group** are in the same menu.
+- Each saved group is a small colored chip at the left of the bookmark bar (just the name's first 3 letters;
+  hover for the full name). Groups of the same color sit together. Click a chip to bring the
+  group's tabs forward, or to reopen them in a new window when they're closed. Only the first tab
+  loads; the others sleep until you click them.
+- Right-click a chip (or use its submenu under Tab Groups) for **Rename…**, **Change Color**,
+  **Open in New Window** (Move to New Window when it's open), **Close Group** and **Delete Group…**.
+  Closing a group closes its tabs and keeps it saved. Deleting it leaves its open tabs open, ungrouped.
+- A group follows its open tabs: navigate, open or close one and the saved group changes with it.
+  Closing the group's window keeps every tab saved.
+
+In the tab strip, a group's tabs sit together after a label in the group's color, washed in that
+color, with one colored line running under the label and all its tabs. Click the label to collapse
+the group to just its label (with a tab count), and again to expand it; right-click it for the
+group's menu. Selecting a tab in a collapsed group (⌃Tab, the » list) expands it. Tabs can't be
+multi-selected, so a group starts from the current tab or the whole window. Adding a tab to a closed group reopens the group's other tabs (asleep) next to
+it, so the group keeps all of them. Private windows can't use groups.
 
 ## History
 - **History ▸ Show All History (⌘Y):** search, open, or delete pages. Select rows and press Delete,
@@ -124,6 +185,9 @@ Then choose **Shields ▸ Reload Blocklists**.
 - Restoring tabs on launch.
 - Sites with Shields off.
 - A button to make Feather your default browser (macOS asks you to confirm).
+- Developer: **Inspect Element** in a page's right-click menu, and **View ▸ Show Web Inspector (⌥⌘I)**,
+  with the console, network and page elements. Off by default, because the inspector can read
+  everything on a page.
 
 Changes take effect right away. The same values can still be set from Terminal, for example:
 

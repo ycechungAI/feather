@@ -2,6 +2,30 @@
 
 ## Unreleased: memory and disk
 
+### Added
+- **Feather's own tab strip** replaces macOS window tabs: fixed-width tabs from the left that shrink
+  only when full (then a » list), narrow pinned tabs with a site badge, Chrome-style groups (colored
+  label, tint and line; click the label to collapse), × and middle-click to close, drag to reorder,
+  drag off to a new window or onto another window, ⌘1–9 and ⌃Tab, and ⌘W closes the tab (⇧⌘W the
+  window). Only the selected tab's page is in the window, so WebKit throttles the others.
+- **Inspect Element** and View ▸ Show Web Inspector (⌥⌘I), turned on in Settings ▸ Developer, for
+  reading a page's console when something breaks. It also applies to tabs already open.
+- **One bookmark bar per window** instead of one per tab, which saves memory with many tabs.
+- **Pin Tab** in a tab's right-click menu, with Add Tab to Group and the usual close commands. Pinned
+  tabs are narrow (about 3 letters) at the left, survive Close Other Tabs, ask before closing, and are
+  restored.
+- **Saved tab groups,** like Chrome's and Brave's. Make a group from the window's tabs or the
+  current tab, with a name and one of 8 colors (Tab Groups menu). Groups show as colored chips at
+  the left of the bookmark bar: click one to bring its tabs forward or reopen them in a new window,
+  asleep except the first; right-click to rename, recolor, open in a new window, close or delete.
+  Grouped tabs show the group's colored dot before their title. Groups are saved in
+  `tab-groups.json` and keep up with their open tabs.
+- **Download Video (⌥⌘S)**, next to the PiP button. It saves plain video files and HLS streams
+  while they play, including streams behind a `blob:` player such as hls.js, with the site's cookies.
+  It refuses encrypted, DRM and DASH streams with a message that says why.
+- **Subtitles button:** turns the video's own subtitle tracks on or off, and loads `.srt` and `.vtt`
+  files onto any video (View ▸ Load Subtitle File…).
+
 ### Changed
 - **Web cache is capped at 500 MB** (Settings ▸ Web cache limit, 250 MB to 5 GB). Every 2 minutes
   Feather drops cached video, audio and large images, which were about 80% of the cache. It keeps
@@ -16,6 +40,9 @@
 - **The release build is optimized for size** (`-Osize`, dead stripping): the binary is 12% smaller.
 
 ### Fixed
+- **Twitch showed "Error #3000" when an ad ended.** Twitch's player reports each ad to Amazon's ad
+  servers and fails when it can't. Twitch may now reach them; they stay blocked on every other site.
+- **Restored windows put their tabs out of order.** Every tab after the first came back in reverse.
 - **YouTube ads closed Picture in Picture.** YouTube turns PiP off on its player during ads. Feather
   now keeps it allowed, and reopens the floating window if an ad still closes it.
 - **Clear History's "cookies and site data" signed you out of Google.** It now keeps the cookies of
