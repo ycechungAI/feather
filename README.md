@@ -36,8 +36,8 @@ macOS updates.
   part with your login for the site, as an `.mp4`, or as a `.ts` for older streams (`.ts` plays in
   IINA or VLC, not QuickTime). Live streams record until you cancel them in Downloads. Encrypted or
   DRM-protected videos and DASH streams (picture and sound sent separately) can't be saved.
-- **Subtitles:** the speech-bubble button lists the video's own subtitle tracks, so you can turn them on
-  or off. **Load Subtitle File…** adds an `.srt` or `.vtt` file to any video, also from the View menu.
+- **Subtitles:** the speech-bubble button lists the video's own subtitle tracks, including subtitles
+  stored inside an MP4 or HLS stream, so you can turn them on or off. **Load Subtitle File…** adds an `.srt` or `.vtt` file to any video, also from the View menu.
   Players that draw their own captions (YouTube) use their own CC button.
 - **Sound indicator & mute:** tabs playing sound show 🔊 in their title. **View ▸ Mute Tab (⌃⌘M)**
   silences a tab (🔇) until you unmute it.

@@ -452,9 +452,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         static let shield = NSToolbarItem.Identifier("shield")
         static let newTab = NSToolbarItem.Identifier("newTab")
         static let star = NSToolbarItem.Identifier("star")
-        static let pip = NSToolbarItem.Identifier("pip")
-        static let saveVideo = NSToolbarItem.Identifier("saveVideo")
-        static let subtitles = NSToolbarItem.Identifier("subtitles")
+        static let video = NSToolbarItem.Identifier("video")
         static let extensions = NSToolbarItem.Identifier("extensions")
         static let pins = NSToolbarItem.Identifier("pins")
         static let downloads = NSToolbarItem.Identifier("downloads")
@@ -514,7 +512,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [Item.back, Item.forward, Item.reload, Item.home, Item.pip, Item.saveVideo, Item.subtitles, .flexibleSpace, Item.address, Item.star, Item.newTab, .flexibleSpace, Item.downloads, Item.pins, Item.extensions, Item.shield]
+        [Item.back, Item.forward, Item.reload, Item.home, Item.video, .flexibleSpace, Item.address, Item.star, Item.newTab, .flexibleSpace, Item.downloads, Item.pins, Item.extensions, Item.shield]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -532,11 +530,23 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         case Item.shield: item.view = shieldButton; item.label = "Shields"
         case Item.pins: item.view = extensionPins; item.label = "Pinned Extensions"
         case Item.extensions: item.view = extensionsButton; item.label = "Extensions"
-        case Item.pip: item.view = pipButton; item.label = "Picture in Picture"
-        case Item.saveVideo: item.view = saveVideoButton; item.label = "Download Video"
-        case Item.subtitles: item.view = subtitlesButton; item.label = "Subtitles"
-        case Item.star: item.view = starButton; item.label = "Bookmark"
-        case Item.newTab: item.view = newTabButton; item.label = "New Tab"
+        case Item.video:
+            // One compact group, so the three video buttons take less room and never get split
+            // into the » overflow menu on narrow windows.
+            let group = NSStackView(views: [pipButton, saveVideoButton, subtitlesButton])
+            group.orientation = .horizontal
+            group.spacing = 2
+            item.view = group
+            item.label = "Video"
+            item.visibilityPriority = .high
+        case Item.newTab:
+            item.view = newTabButton
+            item.label = "New Tab"
+            item.visibilityPriority = .low // the tab bar has its own + button
+        case Item.star:
+            item.view = starButton
+            item.label = "Bookmark"
+            item.visibilityPriority = .high
         case Item.downloads:
             item.view = downloadsButton
             item.label = "Downloads"
@@ -546,7 +556,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
             item.label = "Address"
             item.visibilityPriority = .high
             // Centered and capped, shrinking with the window down to a compact minimum.
-            addressField.widthAnchor.constraint(greaterThanOrEqualToConstant: 160).isActive = true
+            addressField.widthAnchor.constraint(greaterThanOrEqualToConstant: 120).isActive = true
             addressField.widthAnchor.constraint(lessThanOrEqualToConstant: 560).isActive = true
             let preferred = addressField.widthAnchor.constraint(equalToConstant: 560)
             preferred.priority = .defaultLow
@@ -1016,7 +1026,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     // MARK: Video download and subtitles
 
     private struct VideoInfo: Decodable {
-        struct Track: Decodable { var index: Int; var label: String; var language: String; var showing: Bool }
+        struct Track: Decodable { var index: Int; var label: String; var language: String; var kind: String; var showing: Bool }
         var score: Double
         var src: String?
         var streams: [String]?
@@ -1113,10 +1123,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
             off.representedObject = SubtitleChoice(frame: frame, index: -1)
             off.state = tracks.contains(where: \.showing) ? .off : .on
             menu.addItem(off)
+            // Subtitles inside the video file usually have only a language, and often come as a pair:
+            // full subtitles and "forced" ones (only for foreign-language lines).
             for track in tracks {
-                let name = !track.label.isEmpty ? track.label
+                var name = !track.label.isEmpty ? track.label
                     : !track.language.isEmpty ? Locale.current.localizedString(forIdentifier: track.language) ?? track.language
                     : "Track \(track.index + 1)"
+                if track.kind == "forced" { name += " (forced only)" }
+                if track.kind == "captions", track.label.isEmpty { name += " (CC)" }
                 let item = NSMenuItem(title: name, action: #selector(self.chooseSubtitleTrack(_:)), keyEquivalent: "")
                 item.representedObject = SubtitleChoice(frame: frame, index: track.index)
                 item.state = track.showing ? .on : .off
