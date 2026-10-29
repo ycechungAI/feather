@@ -104,11 +104,30 @@ def totals(root):
 def wait_for_pid(match, timeout=20):
     end = time.time() + timeout
     while time.time() < end:
-        out = subprocess.run(["pgrep", "-f", match], capture_output=True, text=True).stdout.split()
+        out = subprocess.run(["pgrep", "-n", "-f", match], capture_output=True, text=True).stdout.split()
         if out:
             return int(out[0])
         time.sleep(0.1)
     raise RuntimeError(f"{match} didn't start")
+
+
+def stop(pid, timeout=15):
+    if not pid:
+        return
+    try:
+        os.kill(pid, 15)
+    except ProcessLookupError:
+        return
+    end = time.time() + timeout
+    while time.time() < end:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.2)
+    else:
+        os.kill(pid, 9)
+    time.sleep(2)
 
 
 def du_mb(path):
@@ -171,7 +190,7 @@ class Feather:
         self.binary = os.path.join(self.app, "Contents/MacOS")
         subprocess.run(["defaults", "write", f"{self.container}/Data/Library/Preferences/{BENCH_ID}",
                         "restoreSession", "-bool", "false"], capture_output=True)
-        self.proc = None
+        self.pid = None
 
     def app_mb(self):
         return du_mb(self.source)
@@ -179,24 +198,20 @@ class Feather:
     def profile_mb(self):
         return du_mb(self.container)
 
+    # Launched through `open` (Launch Services), not from this shell: only then does macOS make the
+    # app the "responsible process" of the WebKit processes it starts, which is how they're counted.
     def launch(self, urls):
-        self.proc = subprocess.Popen([os.path.join(self.binary, os.listdir(self.binary)[0]), urls[0]],
-                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        pid = self.proc.pid
+        executable = os.path.join(self.binary, os.listdir(self.binary)[0])
+        subprocess.run(["open", "-n", "-a", self.app, "--args", urls[0]], check=True)
+        self.pid = wait_for_pid(executable)
         if len(urls) > 1:
             time.sleep(2)
             subprocess.run(["open", "-a", self.app] + urls[1:])
-        return pid
+        return self.pid
 
     def quit(self):
-        if self.proc:
-            self.proc.terminate()
-            try:
-                self.proc.wait(10)
-            except subprocess.TimeoutExpired:
-                self.proc.kill()
-            self.proc = None
-        time.sleep(2)
+        stop(self.pid)
+        self.pid = None
 
     def engine(self):
         """Page loads and Speedometer, in Feather's WebKit setup (bench/engine/main.swift)."""
@@ -215,7 +230,7 @@ class Brave:
 
     def __init__(self):
         self.profile = tempfile.mkdtemp(prefix="brave-bench-")
-        self.proc = None
+        self.pid = None
 
     def app_mb(self):
         return du_mb(BRAVE)
@@ -224,24 +239,19 @@ class Brave:
         return du_mb(self.profile)
 
     def args(self, extra=()):
-        return [os.path.join(BRAVE, "Contents/MacOS/Brave Browser"), f"--user-data-dir={self.profile}",
-                "--no-first-run", "--no-default-browser-check", "--disable-features=BraveRewards",
-                *extra]
+        return [f"--user-data-dir={self.profile}", "--no-first-run", "--no-default-browser-check",
+                "--disable-features=BraveRewards", *extra]
 
     def launch(self, urls, debug=False):
         extra = ["--remote-debugging-port=9333"] if debug else []
-        self.proc = subprocess.Popen(self.args(extra) + urls, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return self.proc.pid
+        subprocess.run(["open", "-n", "-a", BRAVE, "--args"] + self.args(extra) + urls, check=True)
+        # The main process; its helpers ("Brave Browser Helper ...") carry the profile flag too.
+        self.pid = wait_for_pid(f"MacOS/Brave Browser --user-data-dir={self.profile}")
+        return self.pid
 
     def quit(self):
-        if self.proc:
-            self.proc.terminate()
-            try:
-                self.proc.wait(15)
-            except subprocess.TimeoutExpired:
-                self.proc.kill()
-            self.proc = None
-        time.sleep(2)
+        stop(self.pid)
+        self.pid = None
 
     def engine(self):
         self.launch(["about:blank"], debug=True)  # Chromium opens about:blank as a blank tab
