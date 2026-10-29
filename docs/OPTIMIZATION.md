@@ -25,10 +25,13 @@ over the browser and all of its helper processes. Each figure comes from one run
   profiles), which may slow its launch.
 - Speedometer couldn't run in Safari without turning on Safari's remote automation. Safari uses the
   same WebKit engine as Feather.
-- **Finding:** Feather used far more CPU than Safari with the same six tabs (68% vs 4%). The Rust
-  prototype, which uses the same engine, used 1.8%. The likely cause is that Feather's background
-  tabs, each a separate window, keep running at full speed instead of being slowed down the way
-  Safari slows hidden tabs. This is worth fixing next.
+- **Finding:** Feather used far more CPU than Safari with the same six tabs (68% vs 4%). This
+  isn't the background tabs: each page's process used 0–5%, so they are slowed down as they should
+  be. Almost all of it is WebKit's networking process, which spins at about 60% in roughly half of
+  all runs, inside Apple's networking code, while moving no data. It happened only with Shields'
+  blocking rules on: 7 of 12 runs with Shields on, 0 of 4 with Shields off (about 1.6% CPU,
+  in line with Safari). Ruled out: the tracking-ping rule, the YouTube ad-skip script, and YouTube
+  or the other five sites on their own. Not yet known: which blocking rule triggers it.
 - Page-load times are left out on purpose. WebKit fires the page's load event later than Chromium
   does (Wikipedia was readable after about 0.3 s but reported "loaded" at 3.4 s), so load-event
   times make WebKit look up to 10× slower than it feels.
