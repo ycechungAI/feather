@@ -11,7 +11,7 @@ could save, not what Rust itself saves.
 
 ## What the prototype is
 
-`rust/src/main.rs` is about 730 lines, plus the page scripts in `rust/src/js/`, which are copied
+`rust/src/main.rs` (~760 lines) and `rust/src/bookmarks.rs` (~270 lines), plus the page scripts in `rust/src/js/`, which are copied
 from the Swift sources. It has:
 
 - One window group of native macOS tabs. The tab bar's + button, ⌘T and ⌘W work.
@@ -26,20 +26,32 @@ from the Swift sources. It has:
   - Shields: the `feather-*` content rule list the Swift build already compiled into the shared
     container, and the YouTube script
   - back/forward swipes, magnification, and the Web Inspector only with `FEATHER_DEBUG=1`
-- Links that open a new window open as a new tab.
+- Links that open a new window open as a new tab. A URL given as the first argument opens in the
+  first tab. URLs sent from other apps (`open -a Feather url…`) open as tabs in the front window.
+- A bookmarks bar under the toolbar, read-only. It reads the Swift build's `bookmarks.json` from
+  Application Support/Feather. Top-level bookmarks are buttons that open in the current tab,
+  folders pop up as menus with submenus, and whatever doesn't fit goes in a » menu. It has no
+  editing, drag and drop, context menus or ⌘-click into a new tab, and it doesn't reload when
+  the file changes.
 
-Not ported: bookmarks, history, extensions, settings, downloads, suggestions, find, session
-restore, tab sleep, the cache limiter, private windows, per-site Shields exceptions, HTTPS-only.
-PiP looks only in the main frame (the Swift build also searches iframes).
+**Still missing compared with the Swift build:** history, extensions, settings, downloads,
+address-bar suggestions, find in page, session restore and ⇧⌘T, tab sleep, the cache limiter,
+private windows, the Shields menu and per-site exceptions, HTTPS-only and HTTPS upgrades,
+tracking-parameter stripping, mute and the sound indicator, zoom, print, bookmark editing and
+the star button, and the History, Bookmarks and Sessions menus. PiP looks only in the main frame
+(the Swift build also searches iframes).
 
 Build with `rust/build-app.sh`. It produces `rust/build/Feather.app`, signed ad hoc with the
 sandbox, hardened runtime and `Support/Feather.entitlements`. `codesign --verify --strict` passes.
 
 **Verified:** it builds and launches. https://www.google.com loads (title "Google"). YouTube
 video `aqz-KE-bpKQ` loads and plays: the probe read `paused=false` with the time advancing on
-every Rust run below. **Not verified:** clicking the toolbar buttons, typing in the address field,
-and the PiP button. The session had no screen-recording or accessibility permission, so nothing
-could be clicked or typed.
+every Rust run below. The bookmarks bar loaded all 14 top-level items from the real
+`bookmarks.json` (probe log), and `open -a` added two URLs as tabs in the running app.
+
+**Not verified:** clicking the toolbar buttons, the bookmark buttons and folder menus, the »
+overflow at narrow widths, typing in the address field, and the PiP button. The session had no
+screen-recording or accessibility permission, so nothing could be clicked or typed.
 
 ## How it was measured
 
@@ -112,11 +124,61 @@ Swift runs 1–2 and Rust runs 1–2 ran back to back. Runs 3–4 of each also r
 - So the measurement can't tell the two shells apart on a video page. A real difference would
   have to be well under ~100 MB to hide in this noise. That fits the expectation of a few MB.
 
+## Shared benchmark suite (`bench/bench.py`, main 311f52b)
+
+Run on the Rust build with the bookmarks bar, on 2026-10-29 at 01:49, with nothing else running:
+`python3 -I bench/bench.py feather rust/build/Feather.app feather-rust`. The Swift column comes
+from the other session's `bench.py all` run at 01:53, which stopped after two stages. There is no
+Brave result yet.
+
+| | Swift (feather) | Rust (feather-rust) |
+|---|---|---|
+| App on disk (MB) | 1.1 | 0.5 |
+| Profile after run (MB) | – | 68.6 |
+| Launch to page shown (ms, median of 3) | 652 | 553 |
+| Memory, 1 blank tab (MB) ¹ | 38 | 31 |
+| Memory, 6 sites (MB) ¹ | – | 63 |
+| Idle CPU, 6 tabs (%) ¹ | – | 1.0 |
+| Speedometer 3.1 ² | – | 26.4 |
+| Load en.wikipedia.org cold / warm (ms) ² | – | 3617 / 3418 |
+| Load github.com cold / warm (ms) ² | – | 1370 / 860 |
+| Load www.cnn.com cold / warm (ms) ² | – | 4324 / 4431 |
+| Load www.reddit.com cold / warm (ms) ² | – | 2186 / 2130 |
+| Load www.amazon.com cold / warm (ms) ² | – | 514 / 266 |
+
+¹ **These count only the app's own process.** The suite adds up every process whose macOS
+"responsible process" is the app. It starts the app's binary directly from a shell, though, and
+then macOS attributes WebKit's processes to the shell's host app, not to Feather. 63 MB for six
+open sites is the app process alone. This affects the Swift build the same way, and I've reported
+it to the session that owns the suite. Corrected numbers are below.
+
+² The page loads and Speedometer don't run in the app. They come from `bench/engine/main.swift`,
+a Swift harness that sets up WebKit the way Feather does, so they are the same for any shell and
+say nothing about Rust.
+
+### Memory and CPU with the app launched by `open -n`
+
+`rust/bench_open.py` uses the suite's own code (its physical-footprint sum, the local test page, and the 15 s /
+60 s / 30 s timings), changed only to launch the app with `open -n`. That makes the app its own
+responsible process, so WebKit's processes are counted too (7 with one tab, 13 with six sites).
+Swift is eeea52a, and Rust is this branch. Both runs alternated, 01:54–02:03.
+
+| Run | Swift: 1 tab | Swift: 6 sites | Swift: idle CPU | Rust: 1 tab | Rust: 6 sites | Rust: idle CPU |
+|---|---|---|---|---|---|---|
+| 1 | 114 MB | 1,373 MB | 68.2% | 140 MB | 1,251 MB | 1.5% |
+| 2 | 92 MB | 1,202 MB | 68.5% | 83 MB | 1,279 MB | 67.4% |
+
+The two builds overlap on every row. With six sites the spread between runs (170 MB for Swift) is
+bigger than the gap between the shells. The ~68% idle CPU comes from the pages, which keep
+playing video previews and ads, not from the shell. One Rust run caught a quiet moment at 1.5%.
+Launch is 553 ms against 652 ms, but that's one benchmark run each (median of 3 launches), and the
+Rust app has less to load at launch.
+
 ## Conclusion
 
 - **Disk:** Rust saves about 490 KB (the binary goes from 822 KB to 346 KB). This is real, but small
   next to WebKit's disk cache (capped at 500 MB) and the profile.
-- **Memory:** no measurable change on a video page. The page runs in WebKit's processes whatever
+- **Memory:** no measurable change on a video page or with six sites open (benchmark section). The page runs in WebKit's processes whatever
   language drives them. The smaller idle app process comes from missing features. A full port
   would add those back, and most of that memory is AppKit and WebKit objects, not Swift.
 - **Cost:** almost every AppKit and WebKit call is `unsafe` in `objc2`. Delegates, KVO and
@@ -137,6 +199,14 @@ rust/measure.py rust/build/Feather.app about:blank 20
 rust/measure.py build/Feather.app "https://www.youtube.com/watch?v=aqz-KE-bpKQ" 75
 rust/measure.py rust/build/Feather.app "https://www.youtube.com/watch?v=aqz-KE-bpKQ" 75 --probe
 defaults delete ~/Library/Containers/dev.feather.browser/Data/Library/Preferences/dev.feather.browser restoreSession
+```
+
+With a checkout of `main` that has `bench/` (at ../Feather here):
+
+```bash
+python3 -I ../Feather/bench/bench.py feather rust/build/Feather.app feather-rust
+python3 -I rust/bench_open.py ../Feather/bench build/Feather.app feather-swift
+python3 -I rust/bench_open.py ../Feather/bench rust/build/Feather.app feather-rust
 ```
 
 The test copy shares the sandbox container, so when it quits it overwrites `last-session.json`.
