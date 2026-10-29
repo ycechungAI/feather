@@ -280,7 +280,16 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         case restore: Settings.restoreSession = on
         case inspector:
             Settings.webInspector = on
-            BrowserWindowController.all.forEach { $0.webView?.isInspectable = on }
+            // Open tabs too: their preferences object is shared with the live page, so Inspect
+            // Element appears in the right-click menu without opening a new tab.
+            for tab in BrowserWindowController.all {
+                guard let webView = tab.webView else { continue }
+                webView.isInspectable = on
+                let preferences = webView.configuration.preferences
+                if preferences.responds(to: NSSelectorFromString("_setDeveloperExtrasEnabled:")) {
+                    preferences.setValue(on, forKey: "developerExtrasEnabled")
+                }
+            }
         default: break
         }
         NotificationCenter.default.post(name: Settings.changed, object: nil)
