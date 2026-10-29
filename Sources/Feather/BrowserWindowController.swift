@@ -365,6 +365,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         }
         config.applicationNameForUserAgent = Settings.userAgentSuffix
         config.preferences.isFraudulentWebsiteWarningEnabled = true
+        // Settings ▸ Developer: adds Inspect Element to the page's right-click menu (WebKit's
+        // non-public developer-extras preference), so console errors can be read.
+        if Settings.webInspector, config.preferences.responds(to: NSSelectorFromString("_setDeveloperExtrasEnabled:")) {
+            config.preferences.setValue(true, forKey: "developerExtrasEnabled")
+        }
         config.preferences.javaScriptCanOpenWindowsAutomatically = false
         config.preferences.isElementFullscreenEnabled = true
         // WebKit keeps Picture in Picture off for apps unless this (non-public) preference is set.
@@ -410,7 +415,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         webView.allowsMagnification = true
         // The Web Inspector can read page state (including private windows), so only
         // expose it to builds run with FEATHER_DEBUG=1.
-        webView.isInspectable = ProcessInfo.processInfo.environment["FEATHER_DEBUG"] != nil
+        webView.isInspectable = Settings.webInspector || ProcessInfo.processInfo.environment["FEATHER_DEBUG"] != nil
         webArea.addSubview(webView)
         self.webView = webView
         findBar.webView = webView
@@ -1356,6 +1361,16 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     @objc func zoomIn(_ sender: Any?) { webView?.pageZoom = min((webView?.pageZoom ?? 1) + 0.1, 3) }
     @objc func zoomOut(_ sender: Any?) { webView?.pageZoom = max((webView?.pageZoom ?? 1) - 0.1, 0.3) }
     @objc func zoomReset(_ sender: Any?) { webView?.pageZoom = 1 }
+
+    /// View ▸ Show Web Inspector (⌥⌘I): the page's console, network and elements. Only when
+    /// Settings ▸ Developer allows it, because the inspector can read everything on the page.
+    @objc func showWebInspector(_ sender: Any?) {
+        guard Settings.webInspector, let webView else {
+            return showNotice("Web Inspector is off", "Turn it on in Settings ▸ Developer, then reload the page.")
+        }
+        webView.isInspectable = true
+        (webView.value(forKey: "_inspector") as? NSObject)?.perform(NSSelectorFromString("show"))
+    }
 
     @objc func printPage(_ sender: Any?) {
         guard let webView, let window else { return }

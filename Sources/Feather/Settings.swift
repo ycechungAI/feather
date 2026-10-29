@@ -57,6 +57,7 @@ enum Settings {
             "shieldsAllowlist": [String](),
             "keepSignedIn": ["google.com", "gmail.com", "youtube.com"],
             "cacheLimitMB": 500,
+            "webInspector": false,
         ])
     }
 
@@ -126,6 +127,13 @@ enum Settings {
     static var cacheLimitMB: Int {
         get { max(d.integer(forKey: "cacheLimitMB"), 100) }
         set { d.set(newValue, forKey: "cacheLimitMB") }
+    }
+
+    /// Settings ▸ Developer: Inspect Element and View ▸ Show Web Inspector. Off by default, because
+    /// the inspector can read everything on a page.
+    static var webInspector: Bool {
+        get { d.bool(forKey: "webInspector") }
+        set { d.set(newValue, forKey: "webInspector") }
     }
 
     /// Whether ad and tracker blocking should run on pages from `host`.

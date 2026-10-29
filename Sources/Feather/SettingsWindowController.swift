@@ -13,6 +13,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private var httpsOnly: NSButton!
     private var suggestions: NSButton!
     private var restore: NSButton!
+    private var inspector: NSButton!
     private let exceptions = NSTableView()
     private var removeException: NSButton!
     private let defaultStatus = NSTextField(labelWithString: "")
@@ -28,7 +29,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     ]
 
     private init() {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 600),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 650),
                               styleMask: [.titled, .closable], backing: .buffered, defer: true)
         window.title = "Settings"
         window.tabbingMode = .disallowed
@@ -80,6 +81,12 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         httpsOnly = checkbox("HTTPS-Only Mode: always use secure connections", #selector(toggled(_:)))
         suggestions = checkbox("Show search engine suggestions", #selector(toggled(_:)))
         restore = checkbox("Reopen tabs from last time when Feather starts", #selector(toggled(_:)))
+        inspector = checkbox("Show Inspect Element (Web Inspector, with the console)", #selector(toggled(_:)))
+        let inspectorBox = NSStackView(views: [inspector, note("Right-click a page ▸ Inspect Element, or View ▸ Show Web Inspector (⌥⌘I). "
+                                                               + "Applies to pages loaded after you turn it on.")])
+        inspectorBox.orientation = .vertical
+        inspectorBox.alignment = .leading
+        inspectorBox.spacing = 2
 
         let suggestionsNote = note("Sends what you type in the address bar to your search engine. "
                                    + "Matches from your history and bookmarks always stay on this Mac.")
@@ -135,12 +142,13 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             [label("Shields off for:"), exceptionsBox],
             [label("Startup:"), restore],
             [label("Default browser:"), defaultBox],
+            [label("Developer:"), inspectorBox],
         ])
         grid.column(at: 0).xPlacement = .trailing
         grid.rowAlignment = .firstBaseline
         grid.rowSpacing = 10
         grid.columnSpacing = 10
-        for row in [4, 9, 11] { grid.row(at: row).yPlacement = .top; grid.row(at: row).rowAlignment = .none }
+        for row in [4, 9, 11, 12] { grid.row(at: row).yPlacement = .top; grid.row(at: row).rowAlignment = .none }
         grid.row(at: 8).rowAlignment = .none
         grid.row(at: 8).yPlacement = .top
         grid.row(at: 9).topPadding = 6
@@ -195,6 +203,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         suggestions.state = Settings.searchSuggestions ? .on : .off
         suggestions.isEnabled = Settings.searchEngine?.suggestURL != nil
         restore.state = Settings.restoreSession ? .on : .off
+        inspector.state = Settings.webInspector ? .on : .off
         exceptions.reloadData()
         removeException.isEnabled = exceptions.selectedRow >= 0
         refreshDefaultBrowser()
@@ -269,6 +278,9 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         case httpsOnly: Settings.httpsOnly = on
         case suggestions: Settings.searchSuggestions = on
         case restore: Settings.restoreSession = on
+        case inspector:
+            Settings.webInspector = on
+            BrowserWindowController.all.forEach { $0.webView?.isInspectable = on }
         default: break
         }
         NotificationCenter.default.post(name: Settings.changed, object: nil)
