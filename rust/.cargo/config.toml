@@ -1,0 +1,5 @@
+# Drop frameworks the binary links but never calls (CloudKit, CoreData, … pulled in by the objc2
+# crates' default features), so the app doesn't load them at launch. objc2 looks classes up at
+# run time, so WebKit has no link-time references and must be kept explicitly.
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "link-arg=-Wl,-dead_strip_dylibs", "-C", "link-arg=-Wl,-needed_framework,WebKit"]

@@ -1,0 +1,20 @@
+[package]
+name = "feather"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+objc2 = "0.6"
+objc2-foundation = "0.3"
+objc2-app-kit = "0.3"
+objc2-web-kit = "0.3"
+block2 = "0.6"
+
+# Size over speed, like the Swift build's -Osize: the app's own code is UI glue.
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
