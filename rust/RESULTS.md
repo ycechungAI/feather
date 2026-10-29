@@ -124,44 +124,55 @@ Swift runs 1–2 and Rust runs 1–2 ran back to back. Runs 3–4 of each also r
 - So the measurement can't tell the two shells apart on a video page. A real difference would
   have to be well under ~100 MB to hide in this noise. That fits the expectation of a few MB.
 
-## Shared benchmark suite (`bench/bench.py`, main 311f52b)
+## Shared benchmark suite (`bench/bench.py`, main 22dc169)
 
-Run on the Rust build with the bookmarks bar, on 2026-10-29 at 01:49, with nothing else running:
-`python3 -I bench/bench.py feather rust/build/Feather.app feather-rust`. The Swift column comes
-from the other session's `bench.py all` run at 01:53, which stopped after two stages. There is no
-Brave result yet.
+The suite starts each browser with `open -n`, so memory and CPU include every WebKit or Chromium
+helper process. It sums physical footprint, the number Activity Monitor shows. Each column is one
+run. Swift Feather (eeea52a) and Brave ran in the other session's run, which ended at 02:12. The
+Rust build, with the bookmarks bar, ran alone right after, using the same script.
 
-| | Swift (feather) | Rust (feather-rust) |
-|---|---|---|
-| App on disk (MB) | 1.1 | 0.5 |
-| Profile after run (MB) | – | 68.6 |
-| Launch to page shown (ms, median of 3) | 652 | 553 |
-| Memory, 1 blank tab (MB) ¹ | 38 | 31 |
-| Memory, 6 sites (MB) ¹ | – | 63 |
-| Idle CPU, 6 tabs (%) ¹ | – | 1.0 |
-| Speedometer 3.1 ² | – | 26.4 |
-| Load en.wikipedia.org cold / warm (ms) ² | – | 3617 / 3418 |
-| Load github.com cold / warm (ms) ² | – | 1370 / 860 |
-| Load www.cnn.com cold / warm (ms) ² | – | 4324 / 4431 |
-| Load www.reddit.com cold / warm (ms) ² | – | 2186 / 2130 |
-| Load www.amazon.com cold / warm (ms) ² | – | 514 / 266 |
+| | Rust prototype | Swift Feather | Brave |
+|---|---|---|---|
+| App on disk (MB) | 0.5 | 1.1 | 604.1 |
+| Profile after run (MB) | 74.3 | 63.9 | 144.1 |
+| Launch to page shown (ms, median of 3) | 577 | 699 | 866 |
+| Memory, 1 blank tab (MB) | 81 | 145 | 593 |
+| Memory, 6 sites (MB) | 1,355 | 1,283 | 1,775 |
+| Idle CPU, 6 tabs (%) | 1.8 | 68.2 | 142.7 |
+| Speedometer 3.1 ¹ | 26.2 | 27.0 | 28.8 |
+| Load en.wikipedia.org cold / warm (ms) ¹ | 3418 / 3377 | 3555 / 3426 | 343 / 642 |
+| Load github.com cold / warm (ms) ¹ | 1806 / 945 | 1640 / 1170 | 914 / 418 |
+| Load www.cnn.com cold / warm (ms) ¹ | 5970 / 5899 | 6275 / 5403 | 3569 / 1013 |
+| Load www.reddit.com cold / warm (ms) ¹ | 2359 / 2088 | 2633 / 2066 | 1227 / 938 |
+| Load www.amazon.com cold / warm (ms) ¹ | 260 / 158 | 544 / 293 | 334 / 347 |
 
-¹ **These count only the app's own process.** The suite adds up every process whose macOS
-"responsible process" is the app. It starts the app's binary directly from a shell, though, and
-then macOS attributes WebKit's processes to the shell's host app, not to Feather. 63 MB for six
-open sites is the app process alone. This affects the Swift build the same way, and I've reported
-it to the session that owns the suite. Corrected numbers are below.
+¹ **Page loads and Speedometer don't run in either Feather app.** They come from
+`bench/engine/main.swift`, a shared WKWebView test program that sets up WebKit the way Feather
+does. They can't tell the Swift and Rust shells apart. The gaps between those two columns are
+run-to-run noise.
 
-² The page loads and Speedometer don't run in the app. They come from `bench/engine/main.swift`,
-a Swift harness that sets up WebKit the way Feather does, so they are the same for any shell and
-say nothing about Rust.
+How to read the rest:
 
-### Memory and CPU with the app launched by `open -n`
+- **Disk:** the Rust app really is about half the size (0.5 vs 1.1 MB). Both are about 1,000
+  times smaller than Brave.
+- **One tab (81 vs 145 MB)** and **idle CPU (1.8% vs 68.2%)** are single runs, and the runs below
+  show both swing that much on their own. With one tab the Rust build measured 83–140 MB and Swift
+  92–114 MB. Idle CPU depends on whether the six sites happen to be playing video previews or ads,
+  and the Rust build also hit 67% in one run. Neither number is a real gap between the shells. Part
+  of the one-tab difference is real, though: the prototype loads less at launch (no extension
+  controller, history or settings).
+- **Six sites (1,355 vs 1,283 MB):** a few percent apart, inside the noise. Both use about
+  25–30% less than Brave.
+- **Launch (577 vs 699 ms):** consistent with the earlier run (553 vs 652 ms). That's likely the
+  prototype doing less at launch, not Rust being faster.
 
-`rust/bench_open.py` uses the suite's own code (its physical-footprint sum, the local test page, and the 15 s /
-60 s / 30 s timings), changed only to launch the app with `open -n`. That makes the app its own
-responsible process, so WebKit's processes are counted too (7 with one tab, 13 with six sites).
-Swift is eeea52a, and Rust is this branch. Both runs alternated, 01:54–02:03.
+### Earlier check: memory and CPU, two rounds each
+
+Before the suite was fixed, it started the app straight from a shell. macOS then filed WebKit's
+processes under the shell's host app, so only the app process was counted (63 MB for six sites).
+`rust/bench_open.py` reran the suite's memory and CPU steps with `open -n`, the method the suite
+now uses itself. It counted 7 processes with one tab and 13 with six sites. Swift is eeea52a and
+Rust is this branch, alternating, 01:54–02:03.
 
 | Run | Swift: 1 tab | Swift: 6 sites | Swift: idle CPU | Rust: 1 tab | Rust: 6 sites | Rust: idle CPU |
 |---|---|---|---|---|---|---|
@@ -171,8 +182,7 @@ Swift is eeea52a, and Rust is this branch. Both runs alternated, 01:54–02:03.
 The two builds overlap on every row. With six sites the spread between runs (170 MB for Swift) is
 bigger than the gap between the shells. The ~68% idle CPU comes from the pages, which keep
 playing video previews and ads, not from the shell. One Rust run caught a quiet moment at 1.5%.
-Launch is 553 ms against 652 ms, but that's one benchmark run each (median of 3 launches), and the
-Rust app has less to load at launch.
+The suite's earlier, partly broken run measured launch at 553 ms for Rust and 652 ms for Swift.
 
 ## Conclusion
 
@@ -205,9 +215,10 @@ With a checkout of `main` that has `bench/` (at ../Feather here):
 
 ```bash
 python3 -I ../Feather/bench/bench.py feather rust/build/Feather.app feather-rust
-python3 -I rust/bench_open.py ../Feather/bench build/Feather.app feather-swift
-python3 -I rust/bench_open.py ../Feather/bench rust/build/Feather.app feather-rust
 ```
+
+The suite needs main at 22dc169 or later, which launches through `open -n`. `rust/bench_open.py`
+was only needed before that fix.
 
 The test copy shares the sandbox container, so when it quits it overwrites `last-session.json`.
 Back that file up first if the real Feather's saved tabs matter.
