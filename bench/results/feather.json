@@ -1,0 +1,54 @@
+{
+  "name": "feather",
+  "app_mb": 1.1,
+  "launch_ms": 699,
+  "idle_mb": 145,
+  "sites_mb": 1283,
+  "idle_cpu_pct": 68.2,
+  "profile_mb": 63.9,
+  "loads": {
+    "https://www.cnn.com/": {
+      "cold": 6275,
+      "warm": 5403
+    },
+    "https://www.reddit.com/r/apple/": {
+      "warm": 2066,
+      "cold": 2633
+    },
+    "https://www.amazon.com/": {
+      "cold": 544,
+      "warm": 293
+    },
+    "https://github.com/WebKit/WebKit": {
+      "cold": 1640,
+      "warm": 1170
+    },
+    "https://en.wikipedia.org/wiki/Web_browser": {
+      "warm": 3426,
+      "cold": 3555
+    }
+  },
+  "loads_no_blocker": {
+    "https://www.cnn.com/": {
+      "cold": 6454,
+      "warm": 5854
+    },
+    "https://en.wikipedia.org/wiki/Web_browser": {
+      "warm": 3418,
+      "cold": 3689
+    },
+    "https://github.com/WebKit/WebKit": {
+      "cold": 1767,
+      "warm": 1060
+    },
+    "https://www.reddit.com/r/apple/": {
+      "cold": 2377,
+      "warm": 2097
+    },
+    "https://www.amazon.com/": {
+      "cold": 502,
+      "warm": 279
+    }
+  },
+  "speedometer": "27.0"
+}

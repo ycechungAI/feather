@@ -6,6 +6,26 @@ A tiny macOS browser (about 1 MB). Feather adds no rendering engine of its own: 
 built into macOS (the same one Safari uses), so it gets web-standards and security updates through
 macOS updates.
 
+## How it compares
+Measured against Brave on the same Mac (Apple M4, 16 GB, macOS 27.0.1) on 29 October 2026, with
+[bench/bench.py](bench/bench.py). Memory is the "Memory" figure Activity Monitor shows, summed
+over the browser and all of its helper processes.
+
+| | Feather | Brave |
+|---|---|---|
+| App on disk | **1.1 MB** | 604 MB |
+| Data written during the test | **64 MB** | 144 MB |
+| Launch to a page on screen | **0.70 s** | 0.87 s |
+| Memory with 1 tab | **145 MB** | 593 MB |
+| Memory with 6 busy sites open | **1.28 GB** | 1.78 GB |
+| CPU with those 6 tabs left alone | **68%** | 143% |
+| Speedometer 3.1 (responsiveness, higher is better) | 27.0 | **28.8** |
+
+The six sites are Wikipedia, GitHub, CNN, Reddit, Amazon and YouTube, measured a minute after
+opening. Both browsers were still running those pages' scripts at that point, so the CPU figure
+compares the two rather than showing true idle. Speedometer ran 5 iterations; the two are within 7%.
+Each figure comes from one run, so expect some variation if you run it again.
+
 ## What it does
 - **Ad & tracker blocking:** WebKit content rules compiled to native code, plus YouTube ad skipping.
 - **Low memory:** background tabs idle for 5 minutes go to sleep and free their memory. All hidden

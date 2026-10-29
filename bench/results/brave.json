@@ -1,0 +1,32 @@
+{
+  "name": "brave",
+  "app_mb": 604.1,
+  "launch_ms": 866,
+  "idle_mb": 593,
+  "sites_mb": 1775,
+  "idle_cpu_pct": 142.7,
+  "profile_mb": 144.1,
+  "loads": {
+    "https://en.wikipedia.org/wiki/Web_browser": {
+      "cold": 343,
+      "warm": 642
+    },
+    "https://github.com/WebKit/WebKit": {
+      "cold": 914,
+      "warm": 418
+    },
+    "https://www.cnn.com/": {
+      "cold": 3569,
+      "warm": 1013
+    },
+    "https://www.reddit.com/r/apple/": {
+      "cold": 1227,
+      "warm": 938
+    },
+    "https://www.amazon.com/": {
+      "cold": 334,
+      "warm": 347
+    }
+  },
+  "speedometer": "28.8"
+}
