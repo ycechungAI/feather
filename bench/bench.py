@@ -5,6 +5,7 @@ Usage:
     bench/bench.py feather path/to/Feather.app [name] # a Feather build; name defaults to "feather"
                                                      # (e.g. "feather-rust" for the Rust prototype)
     bench/bench.py brave                             # Brave, with a throwaway profile
+    bench/bench.py safari                            # Safari (uses your real Safari profile)
     bench/bench.py all path/to/Feather.app           # both, then a comparison table
 
 Feather runs as a copy with its own bundle identifier (dev.feather.bench), so it gets its own
@@ -268,6 +269,39 @@ class Brave:
             self.quit()
 
 
+class Safari:
+    """Safari has no separate profiles, so this uses your real one: the test pages land in your
+    Safari history. Speedometer and page loads need Safari's "Allow Remote Automation" (set with
+    an administrator password), so they're skipped; Safari runs the same WebKit as Feather."""
+    name = "safari"
+
+    def __init__(self):
+        self.pid = None
+
+    def app_mb(self):
+        return du_mb("/Applications/Safari.app")
+
+    def profile_mb(self):
+        return None  # shared with your everyday Safari data, so not measurable on its own
+
+    def launch(self, urls):
+        subprocess.run(["open", "-a", "Safari"] + urls, check=True)
+        self.pid = wait_for_pid("Safari.app/Contents/MacOS/Safari")
+        return self.pid
+
+    def quit(self):
+        subprocess.run(["osascript", "-e", 'tell application "Safari" to quit'], capture_output=True)
+        end = time.time() + 15
+        while time.time() < end and subprocess.run(["pgrep", "-f", "Safari.app/Contents/MacOS/Safari"],
+                                                    capture_output=True).returncode == 0:
+            time.sleep(0.3)
+        stop(self.pid)
+        self.pid = None
+
+    def engine(self):
+        return {}
+
+
 # MARK: - Minimal DevTools client (WebSocket over the standard library)
 
 class CDP:
@@ -440,6 +474,8 @@ def main():
         results.append(measure(Feather(sys.argv[2], sys.argv[3] if what == "feather" and len(sys.argv) > 3 else "feather"), pings))
     if what in ("brave", "all"):
         results.append(measure(Brave(), pings))
+    if what == "safari":
+        results.append(measure(Safari(), pings))
     # Compare with every earlier result too (e.g. the Swift and Rust builds side by side).
     names = {r["name"] for r in results}
     for file in sorted(os.listdir(RESULTS)):

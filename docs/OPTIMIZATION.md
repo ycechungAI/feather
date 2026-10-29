@@ -4,25 +4,34 @@ Measured on 2026-10-29 on this Mac, with the release build. Memory is resident m
 Feather and the WebKit processes it started, 75 seconds after opening a 4K YouTube video
 (Big Buck Bunny, `aqz-KE-bpKQ`). Numbers vary by about ±5% between runs.
 
-## Feather vs Brave
-Measured against Brave on the same Mac (Apple M4, 16 GB, macOS 27.0.1) on 29 October 2026, with
+## Feather vs Safari and Brave
+Measured on the same Mac (Apple M4, 16 GB, macOS 27.0.1) on 29 October 2026, with
 [bench/bench.py](../bench/bench.py). Memory is the "Memory" figure Activity Monitor shows, summed
-over the browser and all of its helper processes.
+over the browser and all of its helper processes. Each figure comes from one run.
 
-| | Feather | Brave |
-|---|---|---|
-| App on disk | **1.1 MB** | 604 MB |
-| Data written during the test | **64 MB** | 144 MB |
-| Launch to a page on screen | **0.70 s** | 0.87 s |
-| Memory with 1 tab | **145 MB** | 593 MB |
-| Memory with 6 busy sites open | **1.28 GB** | 1.78 GB |
-| CPU with those 6 tabs left alone | **68%** | 143% |
-| Speedometer 3.1 (responsiveness, higher is better) | 27.0 | **28.8** |
+| | Feather | Safari | Brave |
+|---|---|---|---|
+| App on disk | **1.1 MB** | built into macOS | 604 MB |
+| Data written during the test | **64 MB** | not separable | 144 MB |
+| Launch to a page on screen | **0.70 s** | 1.77 s | 0.87 s |
+| Memory with 1 tab | **145 MB** | 289 MB | 593 MB |
+| Memory with 6 busy sites open | 1.28 GB | **1.09 GB** | 1.78 GB |
+| CPU with those 6 tabs left alone | 68% | **4%** | 143% |
+| Speedometer 3.1 (responsiveness, higher is better) | 27.0 | not measured | **28.8** |
 
-The six sites are Wikipedia, GitHub, CNN, Reddit, Amazon and YouTube, measured a minute after
-opening. Both browsers were still running those pages' scripts at that point, so the CPU figure
-compares the two rather than showing true idle. Speedometer ran 5 iterations; the two are within 7%.
-Each figure comes from one run, so expect some variation if you run it again.
+- The six sites are Wikipedia, GitHub, CNN, Reddit, Amazon and YouTube, measured a minute after
+  opening.
+- Brave ran with a fresh, empty profile. Safari ran with the everyday profile (it has no separate
+  profiles), which may slow its launch.
+- Speedometer couldn't run in Safari without turning on Safari's remote automation. Safari uses the
+  same WebKit engine as Feather.
+- **Finding:** Feather used far more CPU than Safari with the same six tabs (68% vs 4%). The Rust
+  prototype, which uses the same engine, used 1.8%. The likely cause is that Feather's background
+  tabs, each a separate window, keep running at full speed instead of being slowed down the way
+  Safari slows hidden tabs. This is worth fixing next.
+- Page-load times are left out on purpose. WebKit fires the page's load event later than Chromium
+  does (Wikipedia was readable after about 0.3 s but reported "loaded" at 3.4 s), so load-event
+  times make WebKit look up to 10× slower than it feels.
 
 ## Where the memory goes
 

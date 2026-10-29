@@ -7,16 +7,16 @@ built into macOS (the same one Safari uses), so it gets web-standards and securi
 macOS updates.
 
 ## How it compares
-| | Feather | Brave |
-|---|---|---|
-| App size | **1.1 MB** | 604 MB |
-| Memory, 1 tab | **145 MB** | 593 MB |
-| Memory, 6 busy sites | **1.28 GB** | 1.78 GB |
-| Launch to page | **0.70 s** | 0.87 s |
-| Speedometer 3.1 | 27.0 | **28.8** |
+| | Feather | Safari | Brave |
+|---|---|---|---|
+| App size | **1.1 MB** | built into macOS | 604 MB |
+| Memory, 1 tab | **145 MB** | 289 MB | 593 MB |
+| Memory, 6 busy sites | 1.28 GB | **1.09 GB** | 1.78 GB |
+| Launch to page | **0.70 s** | 1.77 s | 0.87 s |
+| Speedometer 3.1 | 27.0 | same engine as Feather | **28.8** |
 
 Apple M4, macOS 27, October 2026. Full results and method:
-[docs/OPTIMIZATION.md](docs/OPTIMIZATION.md#feather-vs-brave).
+[docs/OPTIMIZATION.md](docs/OPTIMIZATION.md#feather-vs-safari-and-brave).
 
 ## What it does
 - **Ad & tracker blocking:** WebKit content rules compiled to native code, plus YouTube ad skipping.
