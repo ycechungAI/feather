@@ -179,8 +179,12 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
         let range = NSPopUpButton(frame: .zero, pullsDown: false)
         range.addItems(withTitles: ["the last hour", "today", "today and yesterday", "all history"])
         range.selectItem(at: 3)
+        let kept = Settings.keepSignedIn
         let data = NSButton(checkboxWithTitle: "Also clear cookies, cache and site data (signs you out of sites)",
                             target: nil, action: nil)
+        if !kept.isEmpty {
+            alert.informativeText += " You stay signed in to \(kept.joined(separator: ", "))."
+        }
         let label = NSTextField(labelWithString: "Clear:")
         let row = NSStackView(views: [label, range])
         let stack = NSStackView(views: [row, data])

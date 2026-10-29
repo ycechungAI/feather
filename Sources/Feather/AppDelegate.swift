@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         NSWindow.allowsAutomaticWindowTabbing = true
         NSApp.mainMenu = MainMenu.build()
         TabSuspender.shared.start()
+        CacheLimiter.shared.start()
         ExtensionManager.shared.loadAll()
         SessionRestore.shared.snapshot = { BrowserWindowController.sessionSnapshot() }
         Shields.shared.prepare { [weak self] in

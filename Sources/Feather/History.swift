@@ -8,12 +8,13 @@ struct HistoryEntry: Codable, Equatable {
     var date: Date
 }
 
-/// Browsing history for normal windows (private windows never record). Newest first,
-/// capped so the file stays small, and saved a moment after changes to avoid disk churn.
+/// Browsing history for normal windows (private windows never record). Newest first, kept
+/// for 7 days (and at most 5,000 visits), and saved a moment after changes to avoid disk churn.
 final class History {
     static let shared = History()
     static let changed = Notification.Name("FeatherHistoryChanged")
     private static let limit = 5000
+    static let retention: TimeInterval = 7 * 24 * 3600
 
     private(set) var entries: [HistoryEntry] = []
     private let file = Settings.supportDirectory.appendingPathComponent("history.json")
@@ -22,8 +23,16 @@ final class History {
     private init() {
         if let data = try? Data(contentsOf: file),
            let saved = try? JSONDecoder().decode([HistoryEntry].self, from: data) {
-            entries = saved
+            entries = Self.pruned(saved, now: Date())
         }
+    }
+
+    /// Drops visits older than the retention period. Entries are newest first.
+    static func pruned(_ entries: [HistoryEntry], now: Date) -> [HistoryEntry] {
+        let cutoff = now.addingTimeInterval(-retention)
+        var kept = entries.prefix(limit)
+        while let last = kept.last, last.date < cutoff { kept.removeLast() }
+        return Array(kept)
     }
 
     func visit(_ url: URL, title: String?) {
@@ -35,7 +44,7 @@ final class History {
             if let title, !title.isEmpty { entries[0].title = title }
         } else {
             entries.insert(HistoryEntry(url: url, title: title ?? "", date: now), at: 0)
-            if entries.count > Self.limit { entries.removeLast(entries.count - Self.limit) }
+            entries = Self.pruned(entries, now: now)
         }
         changedAndSave()
     }
@@ -62,10 +71,7 @@ final class History {
     func clear(since date: Date?, websiteData: Bool) {
         if let date { entries.removeAll { $0.date >= date } } else { entries.removeAll() }
         changedAndSave()
-        if websiteData {
-            WKWebsiteDataStore.default().removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),
-                                                    modifiedSince: date ?? .distantPast) {}
-        }
+        if websiteData { MainActor.assumeIsolated { LoginKeeper.clearWebsiteData(since: date) } }
     }
 
     func saveNow() {

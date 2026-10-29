@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased: memory and disk
+
+### Changed
+- **Web cache is capped at 500 MB** (Settings ▸ Web cache limit, 250 MB to 5 GB). Every 2 minutes
+  Feather drops cached video, audio and large images, which were about 80% of the cache. It keeps
+  scripts, styles and fonts at any size, and keeps a cache only for your 20 most visited sites and
+  open tabs. On a real profile the cache went from 781 MB to 55 MB. Cookies and site storage are
+  never touched.
+- **History keeps the last 7 days.**
+- **Tabs sleep after 5 minutes** in the background (was 10).
+- **No back/forward page cache:** going Back reloads the page instead of keeping old pages in memory.
+  Also smaller audio buffers during video and slower timers on hidden pages.
+- **The PiP button sits next to Home**, at the top left.
+- **The release build is optimized for size** (`-Osize`, dead stripping): the binary is 12% smaller.
+
+### Fixed
+- **YouTube ads closed Picture in Picture.** YouTube turns PiP off on its player during ads. Feather
+  now keeps it allowed, and reopens the floating window if an ad still closes it.
+- **Clear History's "cookies and site data" signed you out of Google.** It now keeps the cookies of
+  google.com, gmail.com and youtube.com (the `keepSignedIn` setting).
+
 ## 0.2.0 (unreleased: built and tested; waiting for your hands-on check)
 
 ### Added

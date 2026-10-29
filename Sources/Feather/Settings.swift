@@ -49,12 +49,14 @@ enum Settings {
         d.register(defaults: [
             "shieldsEnabled": true,
             "httpsOnly": true,
-            "suspendMinutes": 10,
+            "suspendMinutes": 5,
             "searchURL": "https://www.google.com/search?q=",
             "homeURL": "https://www.google.com",
             "searchSuggestions": false,
             "restoreSession": true,
             "shieldsAllowlist": [String](),
+            "keepSignedIn": ["google.com", "gmail.com", "youtube.com"],
+            "cacheLimitMB": 500,
         ])
     }
 
@@ -111,6 +113,19 @@ enum Settings {
     static var shieldsAllowlist: [String] {
         get { d.stringArray(forKey: "shieldsAllowlist") ?? [] }
         set { d.set(Array(Set(newValue.map { $0.lowercased() })).sorted(), forKey: "shieldsAllowlist") }
+    }
+
+    /// Sites whose cookies survive Clear History's "cookies and site data" option, so you stay
+    /// signed in (default Google, Gmail and YouTube). Subdomains are included.
+    static var keepSignedIn: [String] {
+        get { d.stringArray(forKey: "keepSignedIn") ?? [] }
+        set { d.set(Array(Set(newValue.map { $0.lowercased() })).sorted(), forKey: "keepSignedIn") }
+    }
+
+    /// The most disk space the web cache may use, in MB (default 500).
+    static var cacheLimitMB: Int {
+        get { max(d.integer(forKey: "cacheLimitMB"), 100) }
+        set { d.set(newValue, forKey: "cacheLimitMB") }
     }
 
     /// Whether ad and tracker blocking should run on pages from `host`.

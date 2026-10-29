@@ -252,10 +252,30 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
             config.preferences.setValue(true, forKey: "allowsPictureInPictureMediaPlayback")
         }
         config.allowsAirPlayForMediaPlayback = true
+        Self.applyMemoryPreferences(to: config.preferences)
+        config.userContentController.add(PiPKeeper.shared, name: MediaScripts.pipMessage)
         Shields.shared.apply(to: config.userContentController, addonInstalls: !isPrivate, host: nil)
         shieldsApplied = Settings.shieldsActive(for: nil)
         if !isPrivate { config.webExtensionController = ExtensionManager.shared.controller }
         return config
+    }
+
+    /// WebKit's (non-public) memory and power preferences, each skipped if WebKit no longer has it.
+    /// - No back/forward page cache: going Back reloads the page instead of keeping every
+    ///   previous page (often its whole process) alive in memory.
+    /// - Smaller audio buffers while video plays, and slower timers on hidden pages.
+    private static func applyMemoryPreferences(to preferences: WKPreferences) {
+        let values: [(String, Bool)] = [
+            ("usesPageCache", false),
+            ("lowPowerVideoAudioBufferSizeEnabled", true),
+            ("hiddenPageDOMTimerThrottlingEnabled", true),
+            ("hiddenPageDOMTimerThrottlingAutoIncreases", true),
+            ("pageVisibilityBasedProcessSuppressionEnabled", true),
+        ]
+        for (key, value) in values
+        where preferences.responds(to: NSSelectorFromString("_set" + key.prefix(1).uppercased() + key.dropFirst() + ":")) {
+            preferences.setValue(value, forKey: key)
+        }
     }
 
     @discardableResult
@@ -487,7 +507,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [Item.back, Item.forward, Item.reload, Item.home, .flexibleSpace, Item.address, Item.star, Item.newTab, .flexibleSpace, Item.downloads, Item.pins, Item.pip, Item.extensions, Item.shield]
+        [Item.back, Item.forward, Item.reload, Item.home, Item.pip, .flexibleSpace, Item.address, Item.star, Item.newTab, .flexibleSpace, Item.downloads, Item.pins, Item.extensions, Item.shield]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -787,7 +807,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         addressField.currentEditor()?.selectAll(nil)
     }
 
-    /// Pinned extensions sit just left of the PiP button. Rebuilt whenever the
+    /// Pinned extensions sit just left of the extensions button. Rebuilt whenever the
     /// extension list or an action (badge/icon) changes.
     @objc private func rebuildPins() {
         // ExtensionManager.changed can fire from a background Task; AppKit needs the main thread.
@@ -938,6 +958,17 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
             else active.webkitSetPresentationMode('inline');
             return 'exited';
         }
+        """ + pipEnterScript
+
+    /// Reopens the floating window after YouTube closed it for an ad; does nothing if it's open.
+    private static let pipRestoreScript = """
+        if (document.pictureInPictureElement
+            || [...document.querySelectorAll('video')].some(v => v.webkitPresentationMode === 'picture-in-picture')) {
+            return 'entered';
+        }
+        """ + pipEnterScript
+
+    private static let pipEnterScript = """
         // Candidate videos: must have data and be visible.
         let videos = [...document.querySelectorAll('video')]
             .filter(v => v.readyState > 0 && v.offsetWidth > 0 && v.offsetHeight > 0);
@@ -972,6 +1003,28 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         } catch (e) { lastError += ' | ' + (e.message || e); }
         return 'error:' + lastError;
         """
+
+    private var restoringPictureInPicture = false
+
+    /// Called by PiPKeeper when an ad closed the floating window. The video may still be loading
+    /// its new source, so this tries a few times.
+    func restorePictureInPicture(in frame: WKFrameInfo, attempt: Int = 0) {
+        guard attempt > 0 || !restoringPictureInPicture else { return }
+        restoringPictureInPicture = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + (attempt == 0 ? 0.4 : 1)) { [weak self] in
+            guard let self, let webView = self.webView else { self?.restoringPictureInPicture = false; return }
+            webView.callAsyncJavaScript(Self.pipRestoreScript, arguments: [:], in: frame, in: .page) { [weak self] result in
+                guard let self else { return }
+                if case .success(let value as String) = result, value == "entered" || attempt >= 4 {
+                    self.restoringPictureInPicture = false
+                } else if attempt >= 4 {
+                    self.restoringPictureInPicture = false
+                } else {
+                    self.restorePictureInPicture(in: frame, attempt: attempt + 1)
+                }
+            }
+        }
+    }
 
     @objc func navigateBack(_ sender: Any?) { webView?.goBack() }
     @objc func navigateForward(_ sender: Any?) { webView?.goForward() }

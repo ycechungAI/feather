@@ -52,6 +52,7 @@ final class Shields {
             controller.addUserScript(WKUserScript(source: ExtensionManager.addonsSiteScript,
                                                   injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         }
+        MediaScripts.userScripts.forEach(controller.addUserScript)
         guard Settings.shieldsActive(for: host) else { return }
         if let ruleList { controller.add(ruleList) }
         controller.addUserScript(WKUserScript(source: Blocklist.youtubeScript,

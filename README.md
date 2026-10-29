@@ -8,8 +8,12 @@ macOS updates.
 
 ## What it does
 - **Ad & tracker blocking:** WebKit content rules compiled to native code, plus YouTube ad skipping.
-- **Low memory:** background tabs idle for 10 minutes go to sleep and free their memory. All hidden
-  tabs sleep right away when the Mac runs low on memory.
+- **Low memory:** background tabs idle for 5 minutes go to sleep and free their memory. All hidden
+  tabs sleep right away when the Mac runs low on memory. Going Back reloads the previous page
+  instead of keeping it in memory.
+- **Small disk cache:** the web cache stays under 500 MB (raise it in Settings). It keeps the scripts,
+  styles and fonts of your 20 most visited sites, which load on every visit, and drops video, audio
+  and large images. Cookies are never touched, so trimming never signs you out.
 - **Efficient video:** uses Apple's hardware video decoders.
 - **Safety:** App Sandbox (pages can't reach your files), HTTPS-only mode, fraudulent-site warnings,
   Gatekeeper quarantine on downloads, tracking parameters removed from URLs, private windows.
@@ -25,6 +29,8 @@ macOS updates.
   looking at in each window loads right away; the others load when you click them, so restoring
   costs almost no memory. Turn this off in Settings, then use **History ▸ Reopen Last Session**
   when you want it.
+- **Picture in Picture:** the PiP button next to Home floats the page's video, on any site, including
+  YouTube and embedded players. If a YouTube ad closes the floating window, Feather reopens it.
 - **Sound indicator & mute:** tabs playing sound show 🔊 in their title. **View ▸ Mute Tab (⌃⌘M)**
   silences a tab (🔇) until you unmute it.
 - **Downloads (⌥⌘L):** progress, cancel, Show in Finder, open, and a list of your last 50 downloads.
@@ -60,15 +66,16 @@ Click the shield in the toolbar:
 - **History ▸ Show All History (⌘Y):** search, open, or delete pages. Select rows and press Delete,
   or right-click for "Delete All from This Site".
 - **History ▸ Clear History… (⇧⌘⌫):** remove the last hour, today, today and yesterday, or all
-  history. You can also clear cookies, cache and site data.
+  history. You can also clear cookies, cache and site data. You stay signed in to Google, Gmail and
+  YouTube: their cookies are kept.
 - Private windows never record history. History is stored only on this Mac, in Feather's sandbox
-  folder, and keeps the latest 5,000 visits.
+  folder, and keeps the last 7 days.
 
 ## Firefox extensions
 Feather runs Firefox add-ons (WebExtensions) through WebKit's built-in extension support.
 - On addons.mozilla.org, click **Add to Feather**, the button Mozilla normally shows as
   "Download Firefox". Clicking any `.xpi` link also starts the install.
-- Installed add-ons are pinned to the toolbar, left of the PiP button. Click one to open its panel,
+- Installed add-ons are pinned to the toolbar, left of the 🧩 button. Click one to open its panel,
   or right-click it to unpin it, open its settings, or remove it. Unpinned add-ons stay in the 🧩 menu.
 - 🧩 ▸ **Install Add-on from File…** accepts a `.xpi`, a `.zip`, or an unpacked folder.
 - Before anything installs, Feather lists the access the add-on wants. Extensions never run in
@@ -111,6 +118,7 @@ Then choose **Shields ▸ Reload Blocklists**.
 - Search engine: Google, DuckDuckGo, Bing, Brave Search, Startpage, or a custom search URL.
 - Home page.
 - How long background tabs wait before sleeping.
+- Web cache limit (250 MB to 5 GB, default 500 MB).
 - Shields and HTTPS-Only Mode.
 - Search suggestions.
 - Restoring tabs on launch.

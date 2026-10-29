@@ -8,6 +8,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private let customSearch = NSTextField()
     private let home = NSTextField()
     private let sleep = NSPopUpButton()
+    private let cacheLimit = NSPopUpButton()
     private var shields: NSButton!
     private var httpsOnly: NSButton!
     private var suggestions: NSButton!
@@ -22,8 +23,12 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         ("5 minutes", 5), ("10 minutes", 10), ("30 minutes", 30), ("1 hour", 60), ("Never", 0),
     ]
 
+    private static let cacheChoices: [(String, Int)] = [
+        ("250 MB", 250), ("500 MB", 500), ("1 GB", 1000), ("2 GB", 2000), ("5 GB", 5000),
+    ]
+
     private init() {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 520),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 600),
                               styleMask: [.titled, .closable], backing: .buffered, defer: true)
         window.title = "Settings"
         window.tabbingMode = .disallowed
@@ -59,6 +64,17 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         sleep.addItems(withTitles: Self.sleepChoices.map(\.0))
         sleep.target = self
         sleep.action = #selector(sleepChanged(_:))
+
+        cacheLimit.addItems(withTitles: Self.cacheChoices.map(\.0))
+        cacheLimit.target = self
+        cacheLimit.action = #selector(cacheLimitChanged(_:))
+        let cacheBox = NSStackView(views: [cacheLimit, note("Keeps scripts, styles and fonts for your 20 most visited sites. "
+                                                            + "Video, audio and large images aren't kept. A bigger limit keeps more.")])
+        cacheBox.orientation = .vertical
+        cacheBox.alignment = .leading
+        cacheBox.spacing = 2
+        let signedIn = note("Clearing cookies and site data never signs you out of "
+                            + (Settings.keepSignedIn.isEmpty ? "any site." : Settings.keepSignedIn.joined(separator: ", ") + "."))
 
         shields = checkbox("Block ads & trackers (Shields)", #selector(toggled(_:)))
         httpsOnly = checkbox("HTTPS-Only Mode: always use secure connections", #selector(toggled(_:)))
@@ -111,6 +127,8 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             [NSGridCell.emptyContentView, customSearch],
             [label("Home page:"), homeRow],
             [label("Sleep inactive tabs after:"), sleep],
+            [label("Web cache limit:"), cacheBox],
+            [label("Stay signed in:"), signedIn],
             [label("Privacy:"), shields],
             [NSGridCell.emptyContentView, httpsOnly],
             [NSGridCell.emptyContentView, suggestionsBox],
@@ -122,11 +140,11 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         grid.rowAlignment = .firstBaseline
         grid.rowSpacing = 10
         grid.columnSpacing = 10
-        for row in [7, 9] { grid.row(at: row).yPlacement = .top; grid.row(at: row).rowAlignment = .none }
-        grid.row(at: 6).rowAlignment = .none
-        grid.row(at: 6).yPlacement = .top
-        grid.row(at: 7).topPadding = 6
-        grid.row(at: 8).topPadding = 6
+        for row in [4, 9, 11] { grid.row(at: row).yPlacement = .top; grid.row(at: row).rowAlignment = .none }
+        grid.row(at: 8).rowAlignment = .none
+        grid.row(at: 8).yPlacement = .top
+        grid.row(at: 9).topPadding = 6
+        grid.row(at: 10).topPadding = 6
         customSearch.widthAnchor.constraint(equalToConstant: 320).isActive = true
         home.widthAnchor.constraint(equalToConstant: 300).isActive = true
         suggestionsNote.preferredMaxLayoutWidth = 340
@@ -170,6 +188,8 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         if window?.firstResponder != home.currentEditor() { home.stringValue = Settings.homePageURL.absoluteString }
         let minutes = Settings.suspendMinutes
         sleep.selectItem(at: Self.sleepChoices.firstIndex { $0.1 == minutes } ?? 1)
+        let limit = Settings.cacheLimitMB
+        cacheLimit.selectItem(at: Self.cacheChoices.lastIndex { $0.1 <= limit } ?? 1)
         shields.state = Settings.shieldsEnabled ? .on : .off
         httpsOnly.state = Settings.httpsOnly ? .on : .off
         suggestions.state = Settings.searchSuggestions ? .on : .off
@@ -231,6 +251,12 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
 
     @objc private func sleepChanged(_ sender: NSPopUpButton) {
         Settings.suspendMinutes = Self.sleepChoices[sender.indexOfSelectedItem].1
+        NotificationCenter.default.post(name: Settings.changed, object: nil)
+    }
+
+    @objc private func cacheLimitChanged(_ sender: NSPopUpButton) {
+        Settings.cacheLimitMB = Self.cacheChoices[sender.indexOfSelectedItem].1
+        CacheLimiter.shared.enforce()
         NotificationCenter.default.post(name: Settings.changed, object: nil)
     }
 
