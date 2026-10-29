@@ -3,6 +3,12 @@
 ## Unreleased: memory and disk
 
 ### Added
+- **Saved tab groups,** like Chrome's and Brave's. Make a group from the window's tabs or the
+  current tab, with a name and one of 8 colors (Tab Groups menu). Groups show as colored chips at
+  the left of the bookmark bar: click one to bring its tabs forward or reopen them in a new window,
+  asleep except the first; right-click to rename, recolor, open in a new window, close or delete.
+  Grouped tabs show the group's colored dot before their title. Groups are saved in
+  `tab-groups.json` and keep up with their open tabs.
 - **Download Video (⌥⌘S)**, next to the PiP button. It saves plain video files and HLS streams
   while they play, including streams behind a `blob:` player such as hls.js, with the site's cookies.
   It refuses encrypted, DRM and DASH streams with a message that says why.
@@ -23,6 +29,7 @@
 - **The release build is optimized for size** (`-Osize`, dead stripping): the binary is 12% smaller.
 
 ### Fixed
+- **Restored windows put their tabs out of order.** Every tab after the first came back in reverse.
 - **YouTube ads closed Picture in Picture.** YouTube turns PiP off on its player during ads. Feather
   now keeps it allowed, and reopens the floating window if an ad still closes it.
 - **Clear History's "cookies and site data" signed you out of Google.** It now keeps the cookies of

@@ -82,6 +82,27 @@ Click the shield in the toolbar:
 - Reopen a session later from the Sessions menu: **Restore** opens its tabs in the frontmost window
   (or a new window). Each session also offers **Rename…** and **Delete**.
 
+## Tab groups
+- **Tab Groups ▸ New Group from Window's Tabs…** or **New Group from Current Tab…** asks for a name
+  and a color. Groups are saved in `tab-groups.json` and survive quitting.
+- **Add Current Tab to Group** and **Remove Current Tab from Group** are in the same menu.
+- Each saved group is a colored chip at the left of the bookmark bar. Click a chip to bring the
+  group's tabs forward, or to reopen them in a new window when they're closed. Only the first tab
+  loads; the others sleep until you click them.
+- Right-click a chip (or use its submenu under Tab Groups) for **Rename…**, **Change Color**,
+  **Open in New Window** (Move to New Window when it's open), **Close Group** and **Delete Group…**.
+  Closing a group closes its tabs and keeps it saved. Deleting it leaves its open tabs open, ungrouped.
+- A group follows its open tabs: navigate, open or close one and the saved group changes with it.
+  Closing the group's window keeps every tab saved.
+
+How this differs from Chrome and Brave: Feather's tabs are native macOS window tabs, and macOS can't
+color or collapse them. So a grouped tab shows its group as a colored dot (🔵) before its title,
+there's no colored band around the group in the tab bar, and a group can't be collapsed in place.
+Use Close Group and the chip instead. macOS tabs can't be multi-selected, so a group starts from
+the current tab or the whole window, and you add more tabs with Add Current Tab to Group. Adding a
+tab to a closed group reopens the group's other tabs (asleep) next to it, so the group keeps all of
+them. Tabs aren't dragged into or out of groups. Private windows can't use groups.
+
 ## History
 - **History ▸ Show All History (⌘Y):** search, open, or delete pages. Select rows and press Delete,
   or right-click for "Delete All from This Site".

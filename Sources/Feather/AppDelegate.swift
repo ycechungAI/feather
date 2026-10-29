@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         CacheLimiter.shared.start()
         ExtensionManager.shared.loadAll()
         SessionRestore.shared.snapshot = { BrowserWindowController.sessionSnapshot() }
+        TabGroups.shared.openTabs = { BrowserWindowController.openTabGroups() }
         Shields.shared.prepare { [weak self] in
             // `Feather https://example.com` from Terminal
             let arg = CommandLine.arguments.dropFirst().first { !$0.hasPrefix("-") }.flatMap(URLTools.resolve)
@@ -32,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func applicationWillTerminate(_ notification: Notification) {
         History.shared.saveNow()
+        TabGroups.shared.syncNow()
         SessionRestore.shared.saveNow()
     }
 

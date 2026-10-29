@@ -210,8 +210,32 @@ private final class BookmarkDropStack: NSStackView {
     }
 }
 
+/// A saved tab group on the bookmarks bar: a rounded chip in the group's color.
+/// Click to show or reopen the group; right-click for its menu.
+private final class TabGroupChip: NSButton {
+    var color = NSColor.systemGray
+
+    override var intrinsicContentSize: NSSize {
+        let text = (title as NSString).size(withAttributes: [.font: chipFont])
+        return NSSize(width: ceil(text.width) + 16, height: 18)
+    }
+
+    private var chipFont: NSFont { .systemFont(ofSize: 11, weight: .semibold) }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let rect = NSRect(x: 0, y: (bounds.height - 18) / 2, width: bounds.width, height: 18)
+        (isHighlighted ? color.shadow(withLevel: 0.2) ?? color : color).setFill()
+        NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6).fill()
+        let textColor: NSColor = color == .systemYellow ? .black : .white
+        let attributes: [NSAttributedString.Key: Any] = [.font: chipFont, .foregroundColor: textColor]
+        let size = (title as NSString).size(withAttributes: attributes)
+        (title as NSString).draw(at: NSPoint(x: (bounds.width - size.width) / 2,
+                                             y: rect.midY - size.height / 2), withAttributes: attributes)
+    }
+}
+
 /// The always-visible strip of bookmarks under the toolbar. Bookmarks that don't fit
-/// are reachable from the » button at the right edge.
+/// are reachable from the » button at the right edge. Saved tab groups sit at the left as chips.
 final class BookmarkBar: NSView {
     static let height: CGFloat = 28
 
@@ -219,6 +243,8 @@ final class BookmarkBar: NSView {
     var onOpen: ((URL, Bool) -> Void)?
 
     private let stack = BookmarkDropStack()
+    private let groupStack = NSStackView()
+    private var groupGap: NSLayoutConstraint!
     private let clip = NSView()
     private let overflowButton = NSButton()
     private let emptyLabel = NSTextField(labelWithString: "Press ⌘D or click ☆ to add a bookmark here")
@@ -235,6 +261,12 @@ final class BookmarkBar: NSView {
         clip.clipsToBounds = true
         clip.translatesAutoresizingMaskIntoConstraints = false
         clip.addSubview(stack)
+
+        groupStack.orientation = .horizontal
+        groupStack.spacing = 4
+        groupStack.translatesAutoresizingMaskIntoConstraints = false
+        groupStack.setContentCompressionResistancePriority(.required, for: .horizontal)
+        groupStack.setHuggingPriority(.required, for: .horizontal)
 
         overflowButton.image = NSImage(systemSymbolName: "chevron.right.2", accessibilityDescription: "All Bookmarks")
         overflowButton.bezelStyle = .recessed
@@ -259,10 +291,13 @@ final class BookmarkBar: NSView {
         barMenu.addItem(newFolderItem)
         menu = barMenu
 
-        [clip, overflowButton, emptyLabel, line].forEach(addSubview)
+        [groupStack, clip, overflowButton, emptyLabel, line].forEach(addSubview)
+        groupGap = clip.leadingAnchor.constraint(equalTo: groupStack.trailingAnchor)
         NSLayoutConstraint.activate([
             heightAnchor.constraint(equalToConstant: Self.height),
-            clip.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
+            groupStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
+            groupStack.centerYAnchor.constraint(equalTo: clip.centerYAnchor),
+            groupGap,
             clip.trailingAnchor.constraint(equalTo: overflowButton.leadingAnchor, constant: -4),
             clip.topAnchor.constraint(equalTo: topAnchor),
             clip.bottomAnchor.constraint(equalTo: line.topAnchor),
@@ -271,7 +306,7 @@ final class BookmarkBar: NSView {
             overflowButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
             overflowButton.centerYAnchor.constraint(equalTo: centerYAnchor),
             overflowButton.widthAnchor.constraint(equalToConstant: 24),
-            emptyLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            emptyLabel.leadingAnchor.constraint(equalTo: clip.leadingAnchor, constant: 6),
             emptyLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
             line.leadingAnchor.constraint(equalTo: leadingAnchor),
             line.trailingAnchor.constraint(equalTo: trailingAnchor),
@@ -279,7 +314,9 @@ final class BookmarkBar: NSView {
         ])
 
         NotificationCenter.default.addObserver(self, selector: #selector(reload), name: Bookmarks.changed, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(reloadGroups), name: TabGroups.changed, object: nil)
         reload()
+        reloadGroups()
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -300,6 +337,28 @@ final class BookmarkBar: NSView {
         }
         emptyLabel.isHidden = !items.isEmpty
         overflowButton.isHidden = items.isEmpty
+    }
+
+    @objc private func reloadGroups() {
+        groupStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        let groups = TabGroups.shared.all
+        for group in groups {
+            let title = group.name.count > 18 ? String(group.name.prefix(17)) + "…" : group.name
+            let chip = TabGroupChip(title: title, target: self, action: #selector(groupClicked(_:)))
+            chip.isBordered = false
+            chip.color = group.color.nsColor
+            chip.identifier = NSUserInterfaceItemIdentifier(group.id.uuidString)
+            chip.toolTip = "\(group.name)\n\(group.tabs.count) tab\(group.tabs.count == 1 ? "" : "s") · click to open"
+            chip.menu = TabGroupsMenu.shared.chipMenu(for: group.id)
+            chip.setContentCompressionResistancePriority(.required, for: .horizontal)
+            groupStack.addArrangedSubview(chip)
+        }
+        groupGap.constant = groups.isEmpty ? 0 : 6
+    }
+
+    @objc private func groupClicked(_ sender: NSButton) {
+        guard let raw = sender.identifier?.rawValue, let id = UUID(uuidString: raw) else { return }
+        BrowserWindowController.showTabGroup(id)
     }
 
     private func button(for node: BookmarkNode, path: IndexPath) -> BookmarkButton {

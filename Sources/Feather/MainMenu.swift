@@ -73,6 +73,9 @@ enum MainMenu {
         let sessions = main.addSubmenu("Sessions", [])
         sessions.delegate = SessionsMenu.shared
 
+        let tabGroups = main.addSubmenu("Tab Groups", [])
+        tabGroups.delegate = TabGroupsMenu.shared
+
         let extensions = main.addSubmenu("Extensions", [])
         extensions.delegate = ExtensionMenu.shared
 

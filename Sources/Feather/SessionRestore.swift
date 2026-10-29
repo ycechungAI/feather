@@ -10,6 +10,8 @@ struct ClosedTab {
 struct SavedTab: Codable, Equatable {
     var url: URL
     var title: String
+    /// The saved tab group the tab belongs to, if any. Optional, so older files still load.
+    var group: UUID? = nil
 }
 
 struct SavedWindow: Codable, Equatable {
