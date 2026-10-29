@@ -5,9 +5,12 @@
 ### Added
 - **Feather's own tab strip** replaces macOS window tabs: fixed-width tabs from the left that shrink
   only when full (then a » list), narrow pinned tabs with a site badge, Chrome-style groups (colored
-  label, tint and line; click the label to collapse), × and middle-click to close, drag to reorder, drag off to a new window or onto another
-  window, ⌘1–9 and ⌃Tab, and ⌘W closes the tab (⇧⌘W the window). Only the selected tab's page is in
+  label, tint and line; click the label to collapse), × and middle-click to close, drag to reorder,
+  drag off to a new window or onto another window, ⌘1–9 and ⌃Tab, and ⌘W closes the tab (⇧⌘W the window). Only the selected tab's page is in
   the window, so WebKit throttles the others.
+- **Inspect Element** and View ▸ Show Web Inspector (⌥⌘I), turned on in Settings ▸ Developer, for
+  reading a page's console when something breaks. It also applies to tabs already open.
+- **One bookmark bar per window** instead of one per tab, which saves memory with many tabs.
 - **Pin Tab** in a tab's right-click menu, with Add Tab to Group and the usual close commands. Pinned
   tabs move to the left, show a colored dot and 3 letters, survive Close Other Tabs, ask before closing, and are restored.
 - **Saved tab groups,** like Chrome's and Brave's. Make a group from the window's tabs or the
@@ -36,6 +39,8 @@
 - **The release build is optimized for size** (`-Osize`, dead stripping): the binary is 12% smaller.
 
 ### Fixed
+- **Twitch showed "Error #3000" when an ad ended.** Twitch's player reports each ad to Amazon's ad
+  servers and fails when it can't. Twitch may now reach them; they stay blocked on every other site.
 - **Restored windows put their tabs out of order.** Every tab after the first came back in reverse.
 - **YouTube ads closed Picture in Picture.** YouTube turns PiP off on its player during ads. Feather
   now keeps it allowed, and reopens the floating window if an ad still closes it.
