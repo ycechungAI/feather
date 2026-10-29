@@ -4,6 +4,8 @@
 
 use std::cell::{Cell, OnceCell, RefCell};
 
+mod bookmarks;
+
 use block2::RcBlock;
 use objc2::rc::{Allocated, Retained};
 use objc2::runtime::{AnyObject, NSObject, NSObjectProtocol, ProtocolObject, Sel};
@@ -27,6 +29,8 @@ use objc2_web_kit::{
     WKUserScriptInjectionTime, WKWebView, WKWebViewConfiguration, WKWebsiteDataStore, WKWindowFeatures,
 };
 
+use bookmarks::BookmarkBar;
+
 const HOME: &str = "https://www.google.com";
 const SEARCH: &str = "https://www.google.com/search?q=";
 const PIP_MESSAGE: &str = "featherPiP";
@@ -44,6 +48,8 @@ thread_local! {
     /// The ad-blocking rules the Swift build already compiled into the shared container.
     static RULES: RefCell<Option<Retained<WKContentRuleList>>> = const { RefCell::new(None) };
     static PIP_HANDLER: OnceCell<Retained<PipKeeper>> = const { OnceCell::new() };
+    /// URLs from other apps (`open -a Feather url…`) that arrived before the first tab opened.
+    static PENDING: RefCell<Option<Vec<String>>> = const { RefCell::new(Some(Vec::new())) };
 }
 
 // MARK: App delegate
@@ -66,10 +72,36 @@ define_class!(
                 // `Feather https://example.com` from Terminal.
                 let arg = std::env::args().skip(1).find(|a| !a.starts_with('-'));
                 let url = arg.as_deref().map(resolve).unwrap_or_else(|| HOME.into());
-                Tab::open(mtm, Some(&url), None, None);
+                let first = Tab::open(mtm, Some(&url), None, None);
+                for url in PENDING.with(|p| p.borrow_mut().take()).unwrap_or_default() {
+                    Tab::open(mtm, Some(&url), Some(first.window()), None);
+                }
             });
             #[allow(deprecated)]
             app.activateIgnoringOtherApps(true);
+        }
+
+        /// Links opened from other apps, and `open -a Feather url…`: each opens as a tab in the
+        /// front window.
+        #[unsafe(method(application:openURLs:))]
+        fn open_urls(&self, _: &NSApplication, urls: &NSArray<NSURL>) {
+            let mtm = self.mtm();
+            for url in urls.iter() {
+                let Some(url) = url.absoluteString().map(|s| s.to_string()) else { continue };
+                let queued = PENDING.with(|p| p.borrow_mut().as_mut().map(|p| p.push(url.clone())).is_some());
+                if queued {
+                    continue;
+                }
+                let key = NSApplication::sharedApplication(mtm).keyWindow();
+                let front = TABS.with(|t| {
+                    let tabs = t.borrow();
+                    tabs.iter()
+                        .find(|tab| key.as_deref().is_some_and(|k| std::ptr::eq(k, tab.window())))
+                        .or(tabs.last())
+                        .map(|tab| tab.window().retain())
+                });
+                Tab::open(mtm, Some(&url), front.as_deref(), None);
+            }
         }
 
         #[unsafe(method(applicationShouldTerminateAfterLastWindowClosed:))]
@@ -378,8 +410,6 @@ impl Tab {
             let env = NSProcessInfo::processInfo().environment();
             web_view.setInspectable(env.objectForKey(ns_string!("FEATHER_DEBUG")).is_some());
         }
-        window.setContentView(Some(&web_view));
-
         let tab = mtm.alloc::<Tab>().set_ivars(TabIvars {
             window: OnceCell::new(),
             web_view: OnceCell::new(),
@@ -388,6 +418,17 @@ impl Tab {
             restoring_pip: Cell::new(0),
         });
         let tab: Retained<Tab> = unsafe { msg_send![super(tab), init] };
+        // The bookmarks bar across the top, the page below it.
+        let content = window.contentView().expect("content view");
+        let size = content.bounds().size;
+        let page_height = size.height - bookmarks::BAR_HEIGHT;
+        web_view.setFrame(NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(size.width, page_height)));
+        content.addSubview(&web_view);
+        let bar = BookmarkBar::create(
+            &tab,
+            NSRect::new(NSPoint::new(0.0, page_height), NSSize::new(size.width, bookmarks::BAR_HEIGHT)),
+        );
+        content.addSubview(&bar);
         let button = |symbol: &str, label: &str, action: Sel| {
             let image = NSImage::imageWithSystemSymbolName_accessibilityDescription(
                 &NSString::from_str(symbol),
