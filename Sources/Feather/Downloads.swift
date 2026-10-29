@@ -15,6 +15,9 @@ final class DownloadItem {
     var isPrivate = false
     var download: WKDownload? // held only while the download runs
     var progressObservation: NSKeyValueObservation?
+    /// For saved video streams, which Feather downloads itself instead of WebKit.
+    var streamProgress: Progress?
+    var cancelStream: (() -> Void)?
 
     init(id: UUID = UUID(), filename: String, destination: URL? = nil, source: URL?, date: Date = Date(),
          state: State = .active, totalBytes: Int64 = 0) {
@@ -27,7 +30,7 @@ final class DownloadItem {
         self.totalBytes = totalBytes
     }
 
-    var progress: Progress? { download?.progress }
+    var progress: Progress? { download?.progress ?? streamProgress }
 
     struct Record: Codable {
         var id: UUID
@@ -86,12 +89,46 @@ final class Downloads: NSObject, WKDownloadDelegate {
         changed()
     }
 
+    /// A video stream saved by StreamDownloader.
+    func trackStream(filename: String, destination: URL, source: URL, progress: Progress, isPrivate: Bool,
+                     cancel: @escaping () -> Void) -> DownloadItem {
+        let item = DownloadItem(filename: filename, destination: destination, source: source)
+        item.isPrivate = isPrivate
+        item.streamProgress = progress
+        item.cancelStream = cancel
+        items.insert(item, at: 0)
+        changed()
+        return item
+    }
+
+    func finishStream(_ item: DownloadItem) {
+        item.streamProgress = nil
+        item.cancelStream = nil
+        item.state = .finished
+        if let url = item.destination,
+           let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize { item.totalBytes = Int64(size) }
+        if let url = item.destination {
+            DistributedNotificationCenter.default().post(name: .init("com.apple.DownloadFileFinished"), object: url.path)
+        }
+        changed()
+    }
+
+    /// A stream that stopped early keeps the part already saved.
+    func endStream(_ item: DownloadItem, cancelled: Bool, error: Error) {
+        guard item.state == .active || cancelled else { return }
+        item.streamProgress = nil
+        item.cancelStream = nil
+        item.state = cancelled ? .cancelled : .failed
+        if !cancelled { NSLog("Feather: stream download failed: \(error.localizedDescription)") }
+        changed()
+    }
+
     private func item(for download: WKDownload) -> DownloadItem? {
         items.first { $0.download === download }
     }
 
     /// Progress fires constantly; the list only needs a few updates a second.
-    private func progressChanged() {
+    func progressChanged() {
         let now = Date()
         guard now.timeIntervalSince(lastProgressPost) > 0.25 else { return }
         lastProgressPost = now
@@ -143,6 +180,9 @@ final class Downloads: NSObject, WKDownloadDelegate {
         guard item.state == .active else { return }
         item.download?.cancel { _ in }
         item.download = nil
+        item.cancelStream?()
+        item.cancelStream = nil
+        item.streamProgress = nil
         item.progressObservation = nil
         item.state = .cancelled
         changed()

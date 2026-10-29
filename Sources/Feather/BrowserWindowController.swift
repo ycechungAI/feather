@@ -1,5 +1,6 @@
 import AppKit
 import WebKit
+import UniformTypeIdentifiers
 
 /// One browser tab. Tabs are native macOS window tabs, so the tab bar, drag-to-detach and
 /// Mission Control all come free from the OS with no extra code or memory.
@@ -26,6 +27,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     private var newTabButton: NSButton!
     private var starButton: NSButton!
     private var pipButton: NSButton!
+    private var saveVideoButton: NSButton!
+    private var subtitlesButton: NSButton!
     private var extensionsButton: NSButton!
     private var downloadsButton: NSButton!
     private let extensionPins = NSStackView()
@@ -450,6 +453,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         static let newTab = NSToolbarItem.Identifier("newTab")
         static let star = NSToolbarItem.Identifier("star")
         static let pip = NSToolbarItem.Identifier("pip")
+        static let saveVideo = NSToolbarItem.Identifier("saveVideo")
+        static let subtitles = NSToolbarItem.Identifier("subtitles")
         static let extensions = NSToolbarItem.Identifier("extensions")
         static let pins = NSToolbarItem.Identifier("pins")
         static let downloads = NSToolbarItem.Identifier("downloads")
@@ -476,6 +481,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
                                                name: ExtensionManager.changed, object: nil)
         rebuildPins()
         pipButton = toolbarButton("pip.enter", "Picture in Picture", #selector(togglePictureInPicture(_:)))
+        saveVideoButton = toolbarButton("arrow.down.to.line", "Download Video", #selector(downloadVideo(_:)))
+        subtitlesButton = toolbarButton("captions.bubble", "Subtitles", #selector(showSubtitlesMenu(_:)))
         starButton = toolbarButton("star", "Bookmark This Page", #selector(toggleBookmark(_:)))
         newTabButton = toolbarButton("plus", "New Tab", #selector(newWindowForTab(_:)))
 
@@ -507,7 +514,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [Item.back, Item.forward, Item.reload, Item.home, Item.pip, .flexibleSpace, Item.address, Item.star, Item.newTab, .flexibleSpace, Item.downloads, Item.pins, Item.extensions, Item.shield]
+        [Item.back, Item.forward, Item.reload, Item.home, Item.pip, Item.saveVideo, Item.subtitles, .flexibleSpace, Item.address, Item.star, Item.newTab, .flexibleSpace, Item.downloads, Item.pins, Item.extensions, Item.shield]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -526,6 +533,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         case Item.pins: item.view = extensionPins; item.label = "Pinned Extensions"
         case Item.extensions: item.view = extensionsButton; item.label = "Extensions"
         case Item.pip: item.view = pipButton; item.label = "Picture in Picture"
+        case Item.saveVideo: item.view = saveVideoButton; item.label = "Download Video"
+        case Item.subtitles: item.view = subtitlesButton; item.label = "Subtitles"
         case Item.star: item.view = starButton; item.label = "Bookmark"
         case Item.newTab: item.view = newTabButton; item.label = "New Tab"
         case Item.downloads:
@@ -1003,6 +1012,177 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         } catch (e) { lastError += ' | ' + (e.message || e); }
         return 'error:' + lastError;
         """
+
+    // MARK: Video download and subtitles
+
+    private struct VideoInfo: Decodable {
+        struct Track: Decodable { var index: Int; var label: String; var language: String; var showing: Bool }
+        var score: Double
+        var src: String?
+        var streams: [String]?
+        var title: String?
+        var page: String?
+        var userAgent: String?
+        var tracks: [Track]?
+    }
+
+    /// The page's main video across all frames, and the frame it's in.
+    private func findVideo(_ completion: @escaping (WKFrameInfo?, VideoInfo?) -> Void) {
+        guard let webView else { return completion(nil, nil) }
+        allFrames(of: webView) { frames in
+            var found: [(WKFrameInfo?, VideoInfo)] = []
+            let group = DispatchGroup()
+            for frame in frames {
+                group.enter()
+                webView.callAsyncJavaScript(MediaScripts.videoProbe, arguments: [:], in: frame, in: .page) { result in
+                    if case .success(let value as String) = result,
+                       let info = try? JSONDecoder().decode(VideoInfo.self, from: Data(value.utf8)), info.score > 0 {
+                        found.append((frame, info))
+                    }
+                    group.leave()
+                }
+            }
+            group.notify(queue: .main) {
+                let best = found.max { $0.1.score < $1.1.score }
+                completion(best?.0, best?.1)
+            }
+        }
+    }
+
+    /// The download button: saves the page's video while it plays. A plain video file goes through
+    /// WebKit's downloads; an HLS stream is saved by StreamDownloader.
+    @objc func downloadVideo(_ sender: Any?) {
+        guard let webView else { return }
+        findVideo { [weak self] _, info in
+            guard let self else { return }
+            guard let info else {
+                return self.showNotice("No video found on this page", "Start the video playing, then try again.")
+            }
+            let page = info.page.flatMap(URL.init(string:))
+            let src = info.src.flatMap(URL.init(string:))
+            let streams = (info.streams ?? []).compactMap(URL.init(string:))
+            let isPlaylist = { (url: URL) in url.pathExtension.lowercased() == "m3u8" }
+            if let src, src.scheme == "http" || src.scheme == "https", !isPlaylist(src) {
+                var request = URLRequest(url: src)
+                if let page { request.setValue(page.absoluteString, forHTTPHeaderField: "Referer") }
+                webView.startDownload(using: request) { [weak self] download in
+                    Downloads.shared.track(download, isPrivate: self?.isPrivate ?? false)
+                }
+            } else if let playlist = (src.map { isPlaylist($0) ? $0 : nil } ?? nil) ?? streams.first(where: isPlaylist) {
+                self.saveStream(playlist, info: info, referer: page)
+            } else if !streams.isEmpty {
+                self.showNotice("This video can't be downloaded",
+                                "It streams as DASH, with picture and sound in separate parts, which Feather can't join.")
+            } else {
+                self.showNotice("This video can't be downloaded",
+                                "Feather couldn't find a file or stream for it. Videos protected with DRM can't be saved.")
+            }
+        }
+    }
+
+    private func saveStream(_ playlist: URL, info: VideoInfo, referer: URL?) {
+        guard let webView else { return }
+        let store = webView.configuration.websiteDataStore.httpCookieStore
+        let isPrivate = self.isPrivate
+        Task { @MainActor [weak self] in
+            let cookies = await store.allCookies()
+            let downloader = StreamDownloader(referer: referer, userAgent: info.userAgent, cookies: cookies)
+            do {
+                try await downloader.start(playlist: playlist, title: info.title ?? "Video", isPrivate: isPrivate)
+            } catch {
+                self?.showNotice("This video can't be downloaded", error.localizedDescription)
+            }
+        }
+    }
+
+    /// The subtitles button: the video's own subtitle tracks, Off, and Load Subtitle File….
+    @objc private func showSubtitlesMenu(_ sender: NSButton) {
+        findVideo { [weak self] frame, info in
+            guard let self else { return }
+            let menu = NSMenu()
+            menu.autoenablesItems = false
+            guard let info else {
+                let none = NSMenuItem(title: "No video on this page", action: nil, keyEquivalent: "")
+                none.isEnabled = false
+                menu.addItem(none)
+                menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
+                return
+            }
+            let tracks = info.tracks ?? []
+            let off = NSMenuItem(title: "Off", action: #selector(self.chooseSubtitleTrack(_:)), keyEquivalent: "")
+            off.representedObject = SubtitleChoice(frame: frame, index: -1)
+            off.state = tracks.contains(where: \.showing) ? .off : .on
+            menu.addItem(off)
+            for track in tracks {
+                let name = !track.label.isEmpty ? track.label
+                    : !track.language.isEmpty ? Locale.current.localizedString(forIdentifier: track.language) ?? track.language
+                    : "Track \(track.index + 1)"
+                let item = NSMenuItem(title: name, action: #selector(self.chooseSubtitleTrack(_:)), keyEquivalent: "")
+                item.representedObject = SubtitleChoice(frame: frame, index: track.index)
+                item.state = track.showing ? .on : .off
+                menu.addItem(item)
+            }
+            if tracks.isEmpty {
+                let note = NSMenuItem(title: "This video has no subtitles of its own", action: nil, keyEquivalent: "")
+                note.isEnabled = false
+                menu.addItem(note)
+            }
+            menu.addItem(.separator())
+            let load = NSMenuItem(title: "Load Subtitle File…", action: #selector(self.loadSubtitleFile(_:)), keyEquivalent: "")
+            load.representedObject = SubtitleChoice(frame: frame, index: -1)
+            menu.addItem(load)
+            menu.items.forEach { $0.target = self }
+            menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
+        }
+    }
+
+    private final class SubtitleChoice: NSObject {
+        let frame: WKFrameInfo?
+        let index: Int
+        init(frame: WKFrameInfo?, index: Int) { self.frame = frame; self.index = index }
+    }
+
+    @objc private func chooseSubtitleTrack(_ sender: NSMenuItem) {
+        guard let choice = sender.representedObject as? SubtitleChoice else { return }
+        webView?.callAsyncJavaScript(MediaScripts.showTrack, arguments: ["index": choice.index],
+                                     in: choice.frame, in: .page)
+    }
+
+    /// View ▸ Load Subtitle File… and the subtitles menu: adds an .srt or .vtt file to the video.
+    @objc func loadSubtitleFile(_ sender: Any?) {
+        if let choice = (sender as? NSMenuItem)?.representedObject as? SubtitleChoice {
+            return pickSubtitleFile(for: choice.frame)
+        }
+        findVideo { [weak self] frame, info in
+            guard info != nil else {
+                return self?.showNotice("No video on this page", "Open the video first, then add its subtitles.") ?? ()
+            }
+            self?.pickSubtitleFile(for: frame)
+        }
+    }
+
+    private func pickSubtitleFile(for frame: WKFrameInfo?) {
+        guard let window else { return }
+        let panel = NSOpenPanel()
+        panel.message = "Choose a subtitle file (.srt or .vtt)"
+        panel.allowedContentTypes = ["srt", "vtt"].compactMap { UTType(filenameExtension: $0) }
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let url = panel.url, let self else { return }
+            let data = (try? Data(contentsOf: url)) ?? Data()
+            let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? ""
+            let cues = Subtitles.parse(text)
+            guard !cues.isEmpty else {
+                return self.showNotice("No subtitles found in that file", "Feather reads .srt and .vtt subtitle files.")
+            }
+            let label = url.deletingPathExtension().lastPathComponent
+            self.webView?.callAsyncJavaScript(MediaScripts.addCues,
+                                              arguments: ["cues": cues.map { [$0.start, $0.end, $0.text] as [Any] }, "label": label],
+                                              in: frame, in: .page) { [weak self] result in
+                if case .success(let value as String) = result, value == "ok" { return }
+                self?.showNotice("Couldn't add the subtitles", "The video may have changed. Start it playing and try again.")
+            }
+        }
+    }
 
     private var restoringPictureInPicture = false
 

@@ -31,6 +31,14 @@ macOS updates.
   when you want it.
 - **Picture in Picture:** the PiP button next to Home floats the page's video, on any site, including
   YouTube and embedded players. If a YouTube ad closes the floating window, Feather reopens it.
+- **Download video (⌥⌘S):** the ⤓ button next to PiP saves the page's video while it plays, into
+  Downloads. Plain video files download as they are. HLS streams (most sites) are saved part by
+  part with your login for the site, as an `.mp4`, or as a `.ts` for older streams (`.ts` plays in
+  IINA or VLC, not QuickTime). Live streams record until you cancel them in Downloads. Encrypted or
+  DRM-protected videos and DASH streams (picture and sound sent separately) can't be saved.
+- **Subtitles:** the speech-bubble button lists the video's own subtitle tracks, so you can turn them on
+  or off. **Load Subtitle File…** adds an `.srt` or `.vtt` file to any video, also from the View menu.
+  Players that draw their own captions (YouTube) use their own CC button.
 - **Sound indicator & mute:** tabs playing sound show 🔊 in their title. **View ▸ Mute Tab (⌃⌘M)**
   silences a tab (🔇) until you unmute it.
 - **Downloads (⌥⌘L):** progress, cancel, Show in Finder, open, and a list of your last 50 downloads.

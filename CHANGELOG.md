@@ -2,6 +2,13 @@
 
 ## Unreleased: memory and disk
 
+### Added
+- **Download Video (⌥⌘S)**, next to the PiP button. It saves plain video files and HLS streams
+  while they play, including streams behind a `blob:` player such as hls.js, with the site's cookies.
+  It refuses encrypted, DRM and DASH streams with a message that says why.
+- **Subtitles button:** turns the video's own subtitle tracks on or off, and loads `.srt` and `.vtt`
+  files onto any video (View ▸ Load Subtitle File…).
+
 ### Changed
 - **Web cache is capped at 500 MB** (Settings ▸ Web cache limit, 250 MB to 5 GB). Every 2 minutes
   Feather drops cached video, audio and large images, which were about 80% of the cache. It keeps

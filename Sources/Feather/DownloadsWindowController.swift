@@ -140,6 +140,9 @@ final class DownloadsWindowController: NSWindowController, NSTableViewDataSource
         let f = sizeFormat
         switch item.state {
         case .active:
+            if let p = item.streamProgress {
+                return p.totalUnitCount > 0 ? "Video stream: \(p.completedUnitCount) of \(p.totalUnitCount) parts" : "Starting…"
+            }
             if let p = item.progress, p.totalUnitCount > 0 {
                 return "\(f.string(fromByteCount: p.completedUnitCount)) of \(f.string(fromByteCount: p.totalUnitCount))"
             }
