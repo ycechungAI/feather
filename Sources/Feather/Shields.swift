@@ -111,6 +111,13 @@ final class Shields {
         // Tracking pings (<a ping>, navigator.sendBeacon) to third parties.
         rules.append(["trigger": ["url-filter": ".*", "resource-type": ["ping"], "load-type": ["third-party"]],
                       "action": ["type": "block"]])
+        // Exceptions come after the blocking rules: ignore-previous-rules undoes them for these sites.
+        for exception in Blocklist.siteExceptions {
+            let escaped = exception.domain.replacingOccurrences(of: ".", with: "\\.")
+            rules.append(["trigger": ["url-filter": "^https?://([^/]+\\.)?\(escaped)[:/]",
+                                      "if-domain": exception.sites.map { "*" + $0 }],
+                          "action": ["type": "ignore-previous-rules"]])
+        }
         rules.append(["trigger": ["url-filter": ".*"],
                       "action": ["type": "css-display-none", "selector": Blocklist.cosmeticSelectors.joined(separator: ", ")]])
         guard let data = try? JSONSerialization.data(withJSONObject: rules) else { return "[]" }
