@@ -10,6 +10,8 @@ final class TabWindow: NSWindowController, NSWindowDelegate, NSMenuItemValidatio
     private(set) var model = TabStripModel()
     private var controllers: [UUID: BrowserWindowController] = [:]
     let strip = TabStripView()
+    /// One bookmark bar per window (not per tab), always shown under the tab strip.
+    private let bookmarkBar = BookmarkBar()
     private let slot = NSView()
     private weak var shown: BrowserWindowController?
     /// Groups folded down to their label in this window's strip.
@@ -39,17 +41,29 @@ final class TabWindow: NSWindowController, NSWindowDelegate, NSMenuItemValidatio
         strip.translatesAutoresizingMaskIntoConstraints = false
         slot.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(strip)
+        root.addSubview(bookmarkBar)
         root.addSubview(slot)
         NSLayoutConstraint.activate([
             strip.topAnchor.constraint(equalTo: root.topAnchor),
             strip.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             strip.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             strip.heightAnchor.constraint(equalToConstant: TabStripView.height),
-            slot.topAnchor.constraint(equalTo: strip.bottomAnchor),
+            bookmarkBar.topAnchor.constraint(equalTo: strip.bottomAnchor),
+            bookmarkBar.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            bookmarkBar.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            slot.topAnchor.constraint(equalTo: bookmarkBar.bottomAnchor),
             slot.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             slot.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             slot.bottomAnchor.constraint(equalTo: root.bottomAnchor),
         ])
+        bookmarkBar.onOpen = { [weak self] url, newTab in
+            guard let self, let tab = self.selectedTab else { return }
+            if newTab {
+                BrowserWindowController.open(url: url, isPrivate: self.isPrivate, inTabOf: self.window, background: true)
+            } else {
+                tab.load(url)
+            }
+        }
         Self.all.append(self)
     }
 

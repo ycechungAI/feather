@@ -11,10 +11,9 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
 
     let isPrivate: Bool
     private(set) var webView: WKWebView?
-    /// Everything under the tab strip: bookmark bar, find bar and page.
+    /// Everything under the window's bookmark bar: find bar and page.
     let content = NSView()
     private let webArea = NSView()
-    private let bookmarkBar = BookmarkBar()
     private let findBar = FindBar()
     private var findBarHeight: NSLayoutConstraint!
     private let suggestions = SuggestionsPopup()
@@ -431,17 +430,13 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
 
     private func layoutContent() {
         webArea.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(bookmarkBar)
         content.addSubview(findBar)
         content.addSubview(webArea)
         findBar.isHidden = true
         findBarHeight = findBar.heightAnchor.constraint(equalToConstant: 0)
         findBar.onClose = { [weak self] in self?.closeFindBar(nil) }
         NSLayoutConstraint.activate([
-            bookmarkBar.topAnchor.constraint(equalTo: content.topAnchor),
-            bookmarkBar.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            bookmarkBar.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            findBar.topAnchor.constraint(equalTo: bookmarkBar.bottomAnchor),
+            findBar.topAnchor.constraint(equalTo: content.topAnchor),
             findBar.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             findBar.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             findBarHeight,
@@ -450,14 +445,6 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
             webArea.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             webArea.bottomAnchor.constraint(equalTo: content.bottomAnchor),
         ])
-        bookmarkBar.onOpen = { [weak self] url, newTab in
-            guard let self else { return }
-            if newTab {
-                Self.open(url: url, isPrivate: self.isPrivate, inTabOf: self.window, background: true)
-            } else {
-                self.load(url)
-            }
-        }
         NotificationCenter.default.addObserver(self, selector: #selector(refreshStar),
                                                name: Bookmarks.changed, object: nil)
     }
