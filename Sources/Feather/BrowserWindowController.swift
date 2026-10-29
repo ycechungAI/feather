@@ -689,7 +689,9 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         addressField.delegate = self
         suggestions.onChoose = { [weak self] suggestion in self?.choose(suggestion) }
 
-        let toolbar = NSToolbar(identifier: "FeatherToolbar")
+        // Each tab has its own toolbar. A shared identifier would make AppKit keep them in sync,
+        // moving this tab's buttons into toolbars that aren't showing.
+        let toolbar = NSToolbar(identifier: "FeatherToolbar-\(tabID.uuidString)")
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
         toolbar.allowsUserCustomization = false

@@ -12,6 +12,8 @@ final class TabWindow: NSWindowController, NSWindowDelegate, NSMenuItemValidatio
     let strip = TabStripView()
     private let slot = NSView()
     private weak var shown: BrowserWindowController?
+    /// Groups folded down to their label in this window's strip.
+    private(set) var collapsedGroups = Set<UUID>()
 
     init(isPrivate: Bool) {
         self.isPrivate = isPrivate
@@ -149,6 +151,23 @@ final class TabWindow: NSWindowController, NSWindowDelegate, NSMenuItemValidatio
         }
     }
 
+    /// Folds a group down to its label, or unfolds it. Folding the group of the selected tab
+    /// selects the nearest tab outside it; a group that is the whole window doesn't fold.
+    func toggleCollapsed(_ group: UUID) {
+        if collapsedGroups.remove(group) == nil {
+            if let selected = model.selectedIndex, model.tabs[selected].group == group {
+                let outside = model.tabs.indices.filter { model.tabs[$0].group != group }
+                guard let nearest = outside.min(by: { abs($0 - selected) < abs($1 - selected) }) else { return }
+                model.select(model.tabs[nearest].id)
+                collapsedGroups.insert(group)
+                showSelected()
+            } else {
+                collapsedGroups.insert(group)
+            }
+        }
+        strip.reload()
+    }
+
     // MARK: Tab changes
 
     func tabChanged(_ tab: BrowserWindowController) {
@@ -168,6 +187,7 @@ final class TabWindow: NSWindowController, NSWindowDelegate, NSMenuItemValidatio
 
     private func showSelected() {
         guard let tab = selectedTab, let window else { return }
+        if let group = tab.tabGroupID, collapsedGroups.remove(group) != nil { strip.reload() }
         guard shown !== tab else { return }
         if let old = shown {
             old.content.removeFromSuperview()

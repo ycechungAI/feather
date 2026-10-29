@@ -111,10 +111,11 @@ Feather draws its own tab strip under the toolbar, like Chrome and Brave.
 - A group follows its open tabs: navigate, open or close one and the saved group changes with it.
   Closing the group's window keeps every tab saved.
 
-Grouped tabs sit together after a label in the group's color, and each is underlined in that color.
-Click the label for the group's menu. Unlike Chrome, a group can't be collapsed in the strip (use
-Close Group and the chip), and tabs can't be multi-selected, so a group starts from the current tab
-or the whole window. Adding a tab to a closed group reopens the group's other tabs (asleep) next to
+In the tab strip, a group's tabs sit together after a label in the group's color, washed in that
+color, with one colored line running under the label and all its tabs. Click the label to collapse
+the group to just its label (with a tab count), and again to expand it; right-click it for the
+group's menu. Selecting a tab in a collapsed group (⌃Tab, the » list) expands it. Tabs can't be
+multi-selected, so a group starts from the current tab or the whole window. Adding a tab to a closed group reopens the group's other tabs (asleep) next to
 it, so the group keeps all of them. Private windows can't use groups.
 
 ## History

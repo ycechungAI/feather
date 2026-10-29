@@ -44,8 +44,19 @@ final class TabStripView: NSView {
     private var labelFont: NSFont { .systemFont(ofSize: 11, weight: .semibold) }
     private var titleFont: NSFont { .systemFont(ofSize: 12) }
 
+    private func labelText(_ group: TabGroup) -> String {
+        guard owner?.collapsedGroups.contains(group.id) == true else { return group.name }
+        let count = owner?.model.tabs.filter { $0.group == group.id }.count ?? 0
+        return "\(group.name)  \(count)"
+    }
+
     private func labelWidth(_ group: TabGroup) -> CGFloat {
-        min(ceil((group.name as NSString).size(withAttributes: [.font: labelFont]).width) + 16, 120)
+        min(ceil((labelText(group) as NSString).size(withAttributes: [.font: labelFont]).width) + 16, 140)
+    }
+
+    /// Whether a tab is folded away inside a collapsed group.
+    private func isFolded(_ tab: TabItem) -> Bool {
+        !tab.pinned && tab.group.map { owner?.collapsedGroups.contains($0) == true } == true
     }
 
     private func computeSlots() {
@@ -54,7 +65,7 @@ final class TabStripView: NSView {
         let groups = Dictionary(TabGroups.shared.all.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let runs = model.runs
         let pinned = model.pinnedCount
-        let unpinned = model.tabs.count - pinned
+        let unpinned = model.tabs.filter { !$0.pinned && !isFolded($0) }.count
         let labels = runs.filter { !model.tabs[$0.range.lowerBound].pinned }.compactMap { $0.group.flatMap { groups[$0] } }
         let fixed = CGFloat(pinned) * Self.pinnedWidth + labels.reduce(0) { $0 + labelWidth($1) + 4 }
         let room = bounds.width - 8 - fixed - 64 // + and » buttons
@@ -68,7 +79,7 @@ final class TabStripView: NSView {
                 slots.append(Slot(kind: .label(id), rect: NSRect(x: x, y: y + 4, width: w, height: h - 8)))
                 x += w + 4
             }
-            for tab in model.tabs[run.range] {
+            for tab in model.tabs[run.range] where !isFolded(tab) {
                 let w = tab.pinned ? Self.pinnedWidth : width
                 slots.append(Slot(kind: .tab(tab.id), rect: NSRect(x: x, y: y, width: w, height: h)))
                 x += w
@@ -90,6 +101,7 @@ final class TabStripView: NSView {
         let clipRight = overflowRect == .zero ? bounds.width : overflowRect.minX
         NSGraphicsContext.saveGraphicsState()
         NSRect(x: 0, y: 0, width: min(clipRight, plusRect.minX), height: bounds.height).clip()
+        drawGroupLines(groups)
         for (i, slot) in slots.enumerated() {
             switch slot.kind {
             case .label(let id):
@@ -113,7 +125,30 @@ final class TabStripView: NSView {
         group.color.nsColor.setFill()
         NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6).fill()
         let text: NSColor = group.color == .yellow ? .black : .white
-        draw(group.name, in: rect.insetBy(dx: 8, dy: 0), font: labelFont, color: text, centered: true)
+        draw(labelText(group), in: rect.insetBy(dx: 8, dy: 0), font: labelFont, color: text, centered: true)
+    }
+
+    /// One colored line under each group, from its label to its last tab, as in Chrome.
+    private func drawGroupLines(_ groups: [UUID: TabGroup]) {
+        var spans: [(TabGroup, CGFloat, CGFloat)] = []
+        for slot in slots {
+            let id: UUID?
+            switch slot.kind {
+            case .label(let g): id = g
+            case .tab(let t): id = owner?.model.tab(t).flatMap { $0.pinned ? nil : $0.group }
+            }
+            guard let id, let group = groups[id] else { continue }
+            if let last = spans.last, last.0.id == id, slot.rect.minX - last.2 < 6 {
+                spans[spans.count - 1].2 = slot.rect.maxX
+            } else {
+                spans.append((group, slot.rect.minX, slot.rect.maxX))
+            }
+        }
+        for (group, from, to) in spans {
+            group.color.nsColor.setFill()
+            NSBezierPath(roundedRect: NSRect(x: from + 2, y: bounds.height - 4, width: to - from - 4, height: 3),
+                         xRadius: 1.5, yRadius: 1.5).fill()
+        }
     }
 
     private func drawTab(_ tab: BrowserWindowController, item: TabItem, in rect: NSRect, selected: Bool,
@@ -130,6 +165,11 @@ final class TabStripView: NSView {
             NSRect(x: rect.maxX - 0.5, y: rect.minY + 7, width: 1, height: rect.height - 14).fill()
         }
         if let group {
+            // A light wash of the group's color; stronger on the selected tab.
+            group.color.nsColor.withAlphaComponent(selected ? 0.22 : 0.12).setFill()
+            NSBezierPath(roundedRect: body, xRadius: 7, yRadius: 7).fill()
+        }
+        if item.pinned, let group {
             group.color.nsColor.setFill()
             NSBezierPath(roundedRect: NSRect(x: body.minX + 6, y: body.maxY - 3, width: body.width - 12, height: 3),
                          xRadius: 1.5, yRadius: 1.5).fill()
@@ -238,7 +278,7 @@ final class TabStripView: NSView {
         }
         switch slot.kind {
         case .label(let id):
-            NSMenu.popUpContextMenu(TabGroupsMenu.shared.groupMenu(for: id), with: event, for: self)
+            owner.toggleCollapsed(id)
         case .tab(let id):
             guard let tab = tab(id) else { return }
             if !(owner.model.tab(id)?.pinned ?? true), closeRect(for: slot.rect).contains(point),
