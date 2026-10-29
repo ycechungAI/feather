@@ -175,6 +175,9 @@ Then choose **Shields ▸ Reload Blocklists**.
 - Restoring tabs on launch.
 - Sites with Shields off.
 - A button to make Feather your default browser (macOS asks you to confirm).
+- Developer: **Inspect Element** in a page's right-click menu, and **View ▸ Show Web Inspector (⌥⌘I)**,
+  with the console, network and page elements. Off by default, because the inspector can read
+  everything on a page.
 
 Changes take effect right away. The same values can still be set from Terminal, for example:
 
