@@ -2,3 +2,6 @@
 build/
 .DS_Store
 ._*
+# Benchmark build output and logs (the per-browser .json results are kept)
+bench/results/engine
+bench/results/*.log
