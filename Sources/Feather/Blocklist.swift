@@ -34,6 +34,13 @@ enum Blocklist {
         "^https?://([^/]+\\.)?google\\.com/pagead/",
     ]
 
+    /// Blocked domains that specific sites need in order to work, as (domain, sites). Twitch's
+    /// player reports each ad to Amazon's ad servers and fails with "Error #3000" when the ad
+    /// ends if it can't; the ads themselves are part of the stream either way.
+    static let siteExceptions: [(domain: String, sites: [String])] = [
+        ("amazon-adsystem.com", ["twitch.tv"]),
+    ]
+
     /// Hides leftover empty ad boxes.
     static let cosmeticSelectors: [String] = [
         ".adsbygoogle", "[id^='google_ads_iframe']", "[id^='div-gpt-ad']",
