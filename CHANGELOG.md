@@ -6,13 +6,14 @@
 - **Feather's own tab strip** replaces macOS window tabs: fixed-width tabs from the left that shrink
   only when full (then a » list), narrow pinned tabs with a site badge, Chrome-style groups (colored
   label, tint and line; click the label to collapse), × and middle-click to close, drag to reorder,
-  drag off to a new window or onto another window, ⌘1–9 and ⌃Tab, and ⌘W closes the tab (⇧⌘W the window). Only the selected tab's page is in
-  the window, so WebKit throttles the others.
+  drag off to a new window or onto another window, ⌘1–9 and ⌃Tab, and ⌘W closes the tab (⇧⌘W the
+  window). Only the selected tab's page is in the window, so WebKit throttles the others.
 - **Inspect Element** and View ▸ Show Web Inspector (⌥⌘I), turned on in Settings ▸ Developer, for
   reading a page's console when something breaks. It also applies to tabs already open.
 - **One bookmark bar per window** instead of one per tab, which saves memory with many tabs.
 - **Pin Tab** in a tab's right-click menu, with Add Tab to Group and the usual close commands. Pinned
-  tabs move to the left, show a colored dot and 3 letters, survive Close Other Tabs, ask before closing, and are restored.
+  tabs are narrow (about 3 letters) at the left, survive Close Other Tabs, ask before closing, and are
+  restored.
 - **Saved tab groups,** like Chrome's and Brave's. Make a group from the window's tabs or the
   current tab, with a name and one of 8 colors (Tab Groups menu). Groups show as colored chips at
   the left of the bookmark bar: click one to bring its tabs forward or reopen them in a new window,
