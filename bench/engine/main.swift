@@ -44,6 +44,10 @@ func makeWebView(window: NSWindow, rules: WKContentRuleList?) -> (WKWebView, Nav
     return (webView, nav)
 }
 
+func log(_ message: String) {
+    FileHandle.standardError.write(Data("engine: \(message)\n".utf8))
+}
+
 @MainActor
 func loadTime(_ webView: WKWebView, _ nav: Nav, _ url: String) async -> Int? {
     nav.done = false
@@ -64,11 +68,11 @@ func run() async {
     let input = try! JSONSerialization.jsonObject(with: Data(CommandLine.arguments[1].utf8)) as! [String: Any]
     let sites = input["sites"] as! [String]
     let app = NSApplication.shared
-    app.setActivationPolicy(.regular)
     let window = NSWindow(contentRect: NSRect(x: 80, y: 80, width: 1280, height: 860),
                           styleMask: [.titled, .resizable], backing: .buffered, defer: false)
     window.title = "Feather engine benchmark"
     window.makeKeyAndOrderFront(nil)
+    window.orderFrontRegardless()
     app.activate(ignoringOtherApps: true)
 
     let store = WKContentRuleListStore.default()!
@@ -80,7 +84,9 @@ func run() async {
         var loads: [String: [String: Int]] = [:]
         for kind in ["cold", "warm"] {
             for site in sites {
-                if let ms = await loadTime(webView, nav, site) { loads[site, default: [:]][kind] = ms }
+                let ms = await loadTime(webView, nav, site)
+                log("\(key) \(kind) \(site): \(ms.map(String.init) ?? "timed out")")
+                if let ms { loads[site, default: [:]][kind] = ms }
             }
         }
         output[key] = loads
@@ -90,13 +96,19 @@ func run() async {
     let (webView, nav) = makeWebView(window: window, rules: rules)
     nav.done = false
     if !speedometer.isEmpty { webView.load(URLRequest(url: URL(string: speedometer)!)) }
+    // Speedometer marks the summary "valid" (or "invalid") when the run ends.
     let result = """
-        const s = document.querySelector('#summary'), r = document.querySelector('#result-number');
-        return s && r && getComputedStyle(s).display !== 'none' && r.textContent.trim() ? r.textContent.trim() : '';
+        const s = document.getElementById('summary'), r = document.getElementById('result-number');
+        if (s && (s.className === 'valid' || s.className === 'invalid')) return r ? r.textContent.trim() : 'Error';
+        return '';
         """
+    let status = "return location.hash + ' ' + document.visibilityState + ' ' + (document.querySelector('#progress-completed, #info')?.textContent || '').trim().slice(0, 40)"
     let end = Date().addingTimeInterval(speedometer.isEmpty ? 0 : 1200)
     while Date() < end {
         try? await Task.sleep(for: .seconds(5))
+        if let state = try? await webView.callAsyncJavaScript(status, arguments: [:], in: nil, contentWorld: .page) {
+            log("speedometer: \(state)")
+        }
         if let score = try? await webView.callAsyncJavaScript(result, arguments: [:], in: nil, contentWorld: .page) as? String,
            !score.isEmpty {
             output["speedometer"] = score
@@ -109,5 +121,14 @@ func run() async {
     exit(0)
 }
 
-Task { @MainActor in await run() }
-RunLoop.main.run()
+// A real app run loop, so the window is on screen and WebKit treats the page as visible
+// (hidden pages pause animation frames, and Speedometer with them).
+final class Delegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        Task { @MainActor in await run() }
+    }
+}
+let delegate = Delegate()
+NSApplication.shared.setActivationPolicy(.regular)
+NSApplication.shared.delegate = delegate
+NSApplication.shared.run()

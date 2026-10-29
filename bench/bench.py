@@ -206,7 +206,7 @@ class Feather:
         src.append(os.path.join(root, "Sources/Feather/Blocklist.swift"))
         subprocess.run(["swiftc", "-O", "-o", exe] + src, check=True)
         out = subprocess.run([exe, json.dumps({"sites": LOAD_SITES, "speedometer": SPEEDOMETER})],
-                             capture_output=True, text=True, timeout=1500).stdout
+                             stdout=subprocess.PIPE, text=True, timeout=1500).stdout  # progress goes to stderr
         return json.loads(out.strip().splitlines()[-1])
 
 
@@ -359,6 +359,13 @@ SPEEDOMETER_RESULT = ("(() => { const s = document.querySelector('#summary');"
 
 def measure(browser, pings):
     result = {"name": browser.name, "app_mb": browser.app_mb()}
+    os.makedirs(RESULTS, exist_ok=True)
+
+    def save(stage):
+        # Saved after every stage, so a stage that hangs doesn't lose the earlier ones.
+        print(f"{browser.name}: {stage} done", file=sys.stderr, flush=True)
+        with open(os.path.join(RESULTS, f"{browser.name}.json"), "w") as f:
+            json.dump(result, f, indent=2)
 
     launches = []
     for i in range(4):  # the first run creates the profile, so it's left out
@@ -370,11 +377,13 @@ def measure(browser, pings):
             launches.append((time.time() - start) * 1000)
         browser.quit()
     result["launch_ms"] = round(statistics.median(launches)) if launches else None
+    save("launch")
 
     pid = browser.launch([pings.url])
     time.sleep(15)
     result["idle_mb"] = round(totals(pid)[0])
     browser.quit()
+    save("idle memory")
 
     pid = browser.launch(SITES)
     time.sleep(60)
@@ -384,12 +393,14 @@ def measure(browser, pings):
     _, cpu1 = totals(pid)
     result["idle_cpu_pct"] = round((cpu1 - cpu0) / 30 * 100, 1)
     browser.quit()
-
-    result.update(browser.engine())
     result["profile_mb"] = browser.profile_mb()
-    os.makedirs(RESULTS, exist_ok=True)
-    with open(os.path.join(RESULTS, f"{browser.name}.json"), "w") as f:
-        json.dump(result, f, indent=2)
+    save("six sites")
+
+    try:
+        result.update(browser.engine())
+    except Exception as error:
+        result["engine_error"] = str(error)
+    save("page loads and Speedometer")
     return result
 
 
