@@ -3,6 +3,8 @@
 ## Unreleased: memory and disk
 
 ### Added
+- **Inspect Element** and View ▸ Show Web Inspector (⌥⌘I), turned on in Settings ▸ Developer, for
+  reading a page's console when something breaks. It also applies to tabs already open.
 - **Pin Tab** in a tab's right-click menu, with Add Tab to Group and the usual close commands. Pinned
   tabs move to the left, show a colored dot and 3 letters, survive Close Other Tabs, ask before closing, and are restored.
 - **Saved tab groups,** like Chrome's and Brave's. Make a group from the window's tabs or the
@@ -31,6 +33,8 @@
 - **The release build is optimized for size** (`-Osize`, dead stripping): the binary is 12% smaller.
 
 ### Fixed
+- **Twitch showed "Error #3000" when an ad ended.** Twitch's player reports each ad to Amazon's ad
+  servers and fails when it can't. Twitch may now reach them; they stay blocked on every other site.
 - **Restored windows put their tabs out of order.** Every tab after the first came back in reverse.
 - **YouTube ads closed Picture in Picture.** YouTube turns PiP off on its player during ads. Feather
   now keeps it allowed, and reopens the floating window if an ad still closes it.
