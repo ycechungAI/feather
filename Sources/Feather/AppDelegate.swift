@@ -9,9 +9,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSWindow.allowsAutomaticWindowTabbing = true
+        NSWindow.allowsAutomaticWindowTabbing = false // Feather draws its own tabs
         NSApp.mainMenu = MainMenu.build()
-        BrowserWindowController.installTabBarMenu()
         TabSuspender.shared.start()
         CacheLimiter.shared.start()
         ExtensionManager.shared.loadAll()

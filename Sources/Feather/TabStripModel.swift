@@ -83,9 +83,14 @@ struct TabStripModel: Equatable {
         tabs.insert(item, at: pinnedCount)
     }
 
-    /// Joining a group moves an unpinned tab next to the group's last tab.
+    /// Joining a group moves an unpinned tab next to the group's last tab, unless it's
+    /// already beside one of the group's tabs.
     mutating func setGroup(_ id: UUID, _ group: UUID?) {
         guard let i = index(of: id), tabs[i].group != group else { return }
+        if group == nil || tabs[i].pinned || [i - 1, i + 1].contains(where: { tabs.indices.contains($0) && tabs[$0].group == group }) {
+            tabs[i].group = group
+            return
+        }
         var item = tabs.remove(at: i)
         item.group = group
         if let group, !item.pinned, let last = tabs.lastIndex(where: { $0.group == group && !$0.pinned }) {

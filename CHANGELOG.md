@@ -3,6 +3,11 @@
 ## Unreleased: memory and disk
 
 ### Added
+- **Feather's own tab strip** replaces macOS window tabs: fixed-width tabs from the left that shrink
+  only when full (then a » list), narrow pinned tabs with a site badge, group labels and colored
+  underlines, × and middle-click to close, drag to reorder, drag off to a new window or onto another
+  window, ⌘1–9 and ⌃Tab, and ⌘W closes the tab (⇧⌘W the window). Only the selected tab's page is in
+  the window, so WebKit throttles the others.
 - **Pin Tab** in a tab's right-click menu, with Add Tab to Group and the usual close commands. Pinned
   tabs move to the left, show a colored dot and 3 letters, survive Close Other Tabs, ask before closing, and are restored.
 - **Saved tab groups,** like Chrome's and Brave's. Make a group from the window's tabs or the

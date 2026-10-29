@@ -335,7 +335,7 @@ final class ExtensionManager: NSObject, WKWebExtensionControllerDelegate {
     // MARK: WKWebExtensionControllerDelegate
 
     private var normalTabs: [BrowserWindowController] {
-        NSApp.orderedWindows.compactMap { $0.windowController as? BrowserWindowController }.filter { !$0.isPrivate }
+        TabWindow.ordered.filter { !$0.isPrivate }.flatMap(\.tabs)
     }
 
     func webExtensionController(_ controller: WKWebExtensionController,
@@ -439,28 +439,21 @@ final class ExtensionManager: NSObject, WKWebExtensionControllerDelegate {
 final class ExtensionWindow: NSObject, WKWebExtensionWindow {
     private static let table = NSMapTable<AnyObject, ExtensionWindow>.weakToStrongObjects()
     private weak var key: AnyObject?
-    private weak var fallback: NSWindow?
+    private weak var fallback: BrowserWindowController?
 
     static func `for`(_ tab: BrowserWindowController) -> ExtensionWindow {
-        let key: AnyObject = tab.window?.tabGroup ?? tab
+        let key: AnyObject = tab.host ?? tab
         if let existing = table.object(forKey: key) { return existing }
         let window = ExtensionWindow()
         window.key = key
-        window.fallback = tab.window
+        window.fallback = tab
         table.setObject(window, forKey: key)
         return window
     }
 
-    private var windows: [NSWindow] {
-        if let group = key as? NSWindowTabGroup { return group.windows }
-        return fallback.map { [$0] } ?? []
-    }
+    var tabs: [BrowserWindowController] { (key as? TabWindow)?.tabs ?? fallback.map { [$0] } ?? [] }
 
-    var tabs: [BrowserWindowController] { windows.compactMap { $0.windowController as? BrowserWindowController } }
-
-    var activeTab: BrowserWindowController? {
-        ((key as? NSWindowTabGroup)?.selectedWindow ?? fallback)?.windowController as? BrowserWindowController
-    }
+    var activeTab: BrowserWindowController? { (key as? TabWindow)?.selectedTab ?? fallback }
 
     func tabs(for context: WKWebExtensionContext) -> [any WKWebExtensionTab] { tabs }
     func activeTab(for context: WKWebExtensionContext) -> (any WKWebExtensionTab)? { activeTab }
@@ -483,7 +476,7 @@ final class ExtensionWindow: NSObject, WKWebExtensionWindow {
     }
 
     func close(for context: WKWebExtensionContext, completionHandler: @escaping ((any Error)?) -> Void) {
-        windows.forEach { $0.close() }
+        (key as? TabWindow)?.window?.close()
         completionHandler(nil)
     }
 }

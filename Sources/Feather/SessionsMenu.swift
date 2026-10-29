@@ -128,9 +128,8 @@ final class SessionsMenu: NSObject, NSMenuDelegate {
     /// The http(s) URLs of every tab in the window's tab group, in tab order.
     /// Sleeping tabs contribute their saved URL; blank/new-tab pages are skipped.
     static func tabURLs(of window: NSWindow) -> [URL] {
-        let windows = window.tabGroup?.windows ?? [window]
-        return windows.compactMap { w in
-            guard let controller = w.windowController as? BrowserWindowController else { return nil }
+        let tabs = (window.windowController as? TabWindow)?.tabs ?? []
+        return tabs.compactMap { controller in
             let url = controller.webView?.url ?? controller.sleepingURLForExtensions
             guard let url, let scheme = url.scheme?.lowercased(),
                   scheme == "http" || scheme == "https" else { return nil }

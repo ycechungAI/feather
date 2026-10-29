@@ -82,14 +82,20 @@ Click the shield in the toolbar:
 - Reopen a session later from the Sessions menu: **Restore** opens its tabs in the frontmost window
   (or a new window). Each session also offers **Rename…** and **Delete**.
 
-## Pinned tabs and the tab right-click menu
-- Right-click a tab in the tab bar for **Pin Tab**, **Add Tab to Group** (or New Group…), **Remove from
-  Group**, Close Tab, Close Other Tabs and Move Tab to New Window. The menu's top line names the tab
-  it applies to.
-- A pinned tab moves to the left end of its window and shows only a colored dot (its group's color, grey if ungrouped) and the first 3 letters of its title. Close Other Tabs
-  keeps pinned tabs, and closing one asks first. Pins are saved with the session.
-- macOS draws the tab bar and its menu, so Feather shows its own menu in place of the system one
-  (same commands). Pinned tabs are not shrunk to an icon, as they are in Chrome.
+## Tabs
+Feather draws its own tab strip under the toolbar, like Chrome and Brave.
+- Tabs have a fixed width from the left and shrink only when the window is full; past that, the »
+  button at the right lists every tab. **+** (or ⌘T, or double-clicking empty strip space) opens a tab.
+- **Close:** the × on a tab, a middle click, or ⌘W (the tab, not the window; ⇧⌘W closes the window).
+- **Switch:** click, ⌘1–⌘8 (⌘9 is the last tab), ⌃Tab / ⌃⇧Tab, or ⇧⌘[ / ⇧⌘].
+- **Move:** drag a tab along the strip to reorder it. Drag it off the strip to give it its own window,
+  or onto another Feather window to move it there. Window ▸ Move Tab to New Window does the same.
+- **Right-click a tab** for New Tab, Reload, Mute, **Pin Tab**, **Add Tab to Group** (or New Group…),
+  Remove from Group, Close Tab, Close Other Tabs and Move Tab to New Window.
+- **Pinned tabs** are narrow, at the left, and show only a site badge (the site's first letter).
+  Close Other Tabs keeps them, closing one asks first, and pins are saved with the session.
+- Only the selected tab's page is in the window. Other tabs' pages are set aside, so WebKit slows
+  their timers and drawing, and idle ones sleep (their page is freed) until you click them.
 
 ## Tab groups
 - **Tab Groups ▸ New Group from Window's Tabs…** or **New Group from Current Tab…** asks for a name
@@ -105,13 +111,11 @@ Click the shield in the toolbar:
 - A group follows its open tabs: navigate, open or close one and the saved group changes with it.
   Closing the group's window keeps every tab saved.
 
-How this differs from Chrome and Brave: Feather's tabs are native macOS window tabs, and macOS can't
-color or collapse them. So a grouped tab shows its group as a colored dot (🔵) before its title,
-there's no colored band around the group in the tab bar, and a group can't be collapsed in place.
-Use Close Group and the chip instead. macOS tabs can't be multi-selected, so a group starts from
-the current tab or the whole window, and you add more tabs with Add Current Tab to Group. Adding a
-tab to a closed group reopens the group's other tabs (asleep) next to it, so the group keeps all of
-them. Tabs aren't dragged into or out of groups. Private windows can't use groups.
+Grouped tabs sit together after a label in the group's color, and each is underlined in that color.
+Click the label for the group's menu. Unlike Chrome, a group can't be collapsed in the strip (use
+Close Group and the chip), and tabs can't be multi-selected, so a group starts from the current tab
+or the whole window. Adding a tab to a closed group reopens the group's other tabs (asleep) next to
+it, so the group keeps all of them. Private windows can't use groups.
 
 ## History
 - **History ▸ Show All History (⌘Y):** search, open, or delete pages. Select rows and press Delete,

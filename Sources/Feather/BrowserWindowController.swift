@@ -2,9 +2,8 @@ import AppKit
 import WebKit
 import UniformTypeIdentifiers
 
-/// One browser tab. Tabs are native macOS window tabs, so the tab bar, drag-to-detach and
-/// Mission Control all come free from the OS with no extra code or memory.
-final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate,
+/// One browser tab, shown in a TabWindow with Feather's own tab strip.
+final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
                                      WKNavigationDelegate, WKUIDelegate, WKWebExtensionTab,
                                      NSTextFieldDelegate, NSMenuItemValidation {
     static private(set) var all = Set<BrowserWindowController>()
@@ -12,7 +11,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
 
     let isPrivate: Bool
     private(set) var webView: WKWebView?
-    private let content = NSView()
+    /// Everything under the tab strip: bookmark bar, find bar and page.
+    let content = NSView()
     private let webArea = NSView()
     private let bookmarkBar = BookmarkBar()
     private let findBar = FindBar()
@@ -53,24 +53,42 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
 
     // MARK: Opening
 
+    /// This tab's identity in its window's tab strip.
+    let tabID = UUID()
+    /// The window showing this tab.
+    weak var host: TabWindow?
+    /// The tab's own toolbar, which its window shows while the tab is selected.
+    private(set) var toolbar: NSToolbar!
+
+    /// A tab has no window of its own; this is the window it's shown in.
+    override var window: NSWindow? {
+        get { host?.window }
+        set {}
+    }
+
+    var isSelected: Bool { host?.selectedTab === self }
+    var isAsleep: Bool { webView == nil }
+    var displayTitle: String { baseTitle }
+    /// The page's host, for the tab's site badge.
+    var siteHost: String { currentURL?.host ?? "" }
+
+    /// Opens a tab. With `inTabOf`, in that window (after its selected tab, or at `index`);
+    /// otherwise, or with `newWindow`, in a new window.
     @discardableResult
-    static func open(url: URL?, isPrivate: Bool = false, inTabOf host: NSWindow? = nil,
+    static func open(url: URL?, isPrivate: Bool = false, inTabOf hostWindow: NSWindow? = nil,
                      configuration: WKWebViewConfiguration? = nil, background: Bool = false,
-                     state: Any? = nil, asleep: SavedTab? = nil, newWindow: Bool = false) -> BrowserWindowController {
+                     state: Any? = nil, asleep: SavedTab? = nil, newWindow: Bool = false,
+                     at index: Int? = nil) -> BrowserWindowController {
         let tab = BrowserWindowController(isPrivate: isPrivate, configuration: configuration, asleep: asleep)
         all.insert(tab)
-        if let host, let window = tab.window {
-            host.addTabbedWindow(window, ordered: .above)
+        let existing = newWindow ? nil : (hostWindow?.windowController as? TabWindow).flatMap { $0.isPrivate == isPrivate ? $0 : nil }
+        let target = existing ?? TabWindow(isPrivate: isPrivate)
+        if let asleep {
+            tab.tabGroupID = asleep.group
+            tab.isPinned = asleep.pinned == true
         }
-        // A window that prefers tabbing joins the front window when shown; this one shouldn't.
-        if newWindow { tab.window?.tabbingMode = .disallowed }
-        if background {
-            tab.window?.orderBack(nil)
-            host?.makeKeyAndOrderFront(nil)
-        } else {
-            tab.showWindow(nil)
-        }
-        if newWindow { tab.window?.tabbingMode = .preferred }
+        target.add(tab, at: index, select: !background || existing == nil)
+        if existing == nil || !background { target.showWindow(nil) }
         if !isPrivate { ExtensionManager.shared.controller.didOpenTab(tab) }
         if asleep != nil {
             // Restored background tab: it loads only when you first switch to it.
@@ -96,20 +114,15 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     static func restore(windows: [SavedWindow]) {
         for saved in windows where !saved.tabs.isEmpty {
             let selected = min(max(saved.selected, 0), saved.tabs.count - 1)
-            var host: NSWindow?
-            var selectedTab: BrowserWindowController?
-            // Each tab goes right after the first one, so add the rest last to first.
-            for i in [0] + saved.tabs.indices.dropFirst().reversed() {
-                let tab = saved.tabs[i]
-                let opened = i == selected
-                    ? open(url: tab.url, inTabOf: host, background: host != nil)
-                    : open(url: nil, inTabOf: host, background: host != nil, asleep: tab)
-                opened.tabGroupID = tab.group
-                if tab.pinned == true { opened.setPinned(true, move: false) }
-                if host == nil { host = opened.window }
-                if i == selected { selectedTab = opened }
+            let first = saved.tabs[selected]
+            let shown = open(url: first.url, newWindow: true)
+            shown.tabGroupID = first.group
+            if first.pinned == true { shown.setPinned(true) }
+            let window = shown.window
+            for (i, tab) in saved.tabs.enumerated() where i != selected {
+                open(url: nil, inTabOf: window, background: true, asleep: tab, at: i)
             }
-            selectedTab?.window?.makeKeyAndOrderFront(nil)
+            window?.makeKeyAndOrderFront(nil)
         }
     }
 
@@ -121,7 +134,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
             var selected = 0
             for t in tabs {
                 guard let entry = t.savedTab else { continue }
-                if t.window === window.tabGroup?.selectedWindow { selected = saved.count }
+                if t === window.selectedTab { selected = saved.count }
                 saved.append(entry)
             }
             guard !saved.isEmpty else { continue }
@@ -131,21 +144,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     }
 
     /// The open normal windows, front first, each with its tabs in tab order.
-    private static func normalWindows() -> [(NSWindow, [BrowserWindowController])] {
-        var seen = Set<ObjectIdentifier>()
-        var windows: [(NSWindow, [BrowserWindowController])] = []
-        let ordered = NSApp.orderedWindows.compactMap { $0.windowController as? BrowserWindowController }
-            .filter { !$0.isPrivate && all.contains($0) }
-        let rest = all.filter { !$0.isPrivate && !ordered.contains($0) }
-        for tab in ordered + rest {
-            guard let window = tab.window, !seen.contains(ObjectIdentifier(window)) else { continue }
-            let group = window.tabbedWindows ?? [window]
-            group.forEach { seen.insert(ObjectIdentifier($0)) }
-            let tabs = group.compactMap { $0.windowController as? BrowserWindowController }
-                .filter { all.contains($0) }
-            windows.append((window, tabs))
-        }
-        return windows
+    static func normalWindows() -> [(TabWindow, [BrowserWindowController])] {
+        TabWindow.ordered.filter { !$0.isPrivate }.map { ($0, $0.tabs) }
     }
 
     private var currentURL: URL? { webView?.url ?? sleepingURL }
@@ -156,138 +156,88 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         return SavedTab(url: url, title: baseTitle, group: tabGroupID, pinned: isPinned ? true : nil)
     }
 
+    /// Saves the session and updates open tab groups soon.
+    func tabsChanged() {
+        guard !isPrivate else { return }
+        SessionRestore.shared.setNeedsSave()
+        TabGroups.shared.setNeedsSync()
+    }
+
     // MARK: Pinned tabs
 
-    /// A pinned tab sits at the left end of its window, shows a colored dot and 3 letters, is kept by
-    /// Close Other Tabs, and asks before it closes.
+    /// A pinned tab sits narrow at the left of the tab strip, is kept by Close Other Tabs,
+    /// and asks before it closes.
     private(set) var isPinned = false
-    /// Set while closing on purpose (quit, Close Group, confirmed), so the pin prompt is skipped.
-    private var forceClose = false
 
-    func setPinned(_ pinned: Bool, move: Bool = true) {
-        guard pinned != isPinned else { return }
+    func setPinned(_ pinned: Bool) {
+        guard pinned != isPinned, !isPrivate else { return }
         isPinned = pinned
-        setTitle(baseTitle)
-        if move { moveToPinBoundary() }
-        if !isPrivate { tabsChanged() }
-    }
-
-    /// Puts this tab just after the window's other pinned tabs.
-    private func moveToPinBoundary() {
-        guard let window, let group = window.tabGroup, group.windows.count > 1 else { return }
-        let others = group.windows.filter { $0 !== window }
-        let index = others.prefix { ($0.windowController as? BrowserWindowController)?.isPinned == true }.count
-        guard group.windows.firstIndex(of: window) != index else { return }
-        let selected = group.selectedWindow
-        group.removeWindow(window)
-        group.insertWindow(window, at: index)
-        selected?.makeKeyAndOrderFront(nil)
-    }
-
-    func windowShouldClose(_ sender: NSWindow) -> Bool {
-        guard isPinned, !forceClose, !isPrivate else { return true }
-        let alert = NSAlert()
-        alert.messageText = "Close pinned tab?"
-        alert.informativeText = baseTitle
-        alert.addButton(withTitle: "Close Tab")
-        alert.addButton(withTitle: "Cancel")
-        alert.beginSheetModal(for: sender) { [weak self] response in
-            guard response == .alertFirstButtonReturn, let self else { return }
-            self.forceClose = true
-            sender.performClose(nil)
-        }
-        return false
+        host?.pinChanged(self)
+        tabsChanged()
     }
 
     /// Closes the tab without asking, even if pinned.
     func closeNow() {
-        forceClose = true
-        window?.performClose(nil)
+        host?.close(self, force: true)
     }
 
-    /// The tab's own menu, shown when you right-click it in the tab bar.
+    /// The tab's menu, shown when you right-click it in the tab strip.
     func tabMenu() -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
-        let header = NSMenuItem(title: baseTitle.isEmpty ? "Tab" : baseTitle, action: nil, keyEquivalent: "")
-        header.isEnabled = false
-        menu.addItem(header)
-        menu.addItem(.separator())
-        func add(_ title: String, _ enabled: Bool = true, _ run: @escaping () -> Void) -> NSMenuItem {
+        func add(_ title: String, _ enabled: Bool = true, _ run: @escaping () -> Void) {
             let item = ClosureMenuItem(title: title, run: run)
             item.isEnabled = enabled
             menu.addItem(item)
-            return item
         }
-        _ = add(isPinned ? "Unpin Tab" : "Pin Tab", !isPrivate) { [weak self] in self?.setPinned(!(self?.isPinned ?? false)) }
+        add("New Tab") { [weak self] in self?.host?.newWindowForTab(nil) }
+        add("Reload") { [weak self] in self?.reloadPage(nil) }
+        add(isMuted ? "Unmute Tab" : "Mute Tab") { [weak self] in self?.toggleMute(nil) }
+        add(isPinned ? "Unpin Tab" : "Pin Tab", !isPrivate) { [weak self] in self?.setPinned(!(self?.isPinned ?? true)) }
         if !isPrivate {
             let groups = TabGroups.shared.all
             let sub = NSMenu()
             sub.autoenablesItems = false
-            let tab = savedTab != nil
-            let new = ClosureMenuItem(title: "New Group…", run: { TabGroupsMenu.shared.newGroup(from: [self]) })
-            new.isEnabled = tab
+            let canGroup = savedTab != nil
+            let new = ClosureMenuItem(title: "New Group…", run: { [weak self] in
+                if let self { TabGroupsMenu.shared.newGroup(from: [self]) }
+            })
+            new.isEnabled = canGroup
             sub.addItem(new)
             if !groups.isEmpty { sub.addItem(.separator()) }
             for group in groups {
                 let entry = ClosureMenuItem(title: group.name, run: { [weak self] in self?.addToTabGroup(group.id) })
                 entry.image = group.color.swatch
                 entry.state = group.id == tabGroupID ? .on : .off
-                entry.isEnabled = tab
+                entry.isEnabled = canGroup
                 sub.addItem(entry)
             }
             let groupItem = NSMenuItem(title: "Add Tab to Group", action: nil, keyEquivalent: "")
             groupItem.submenu = sub
             menu.addItem(groupItem)
             if tabGroupID != nil {
-                _ = add("Remove from Group") { [weak self] in self?.removeFromTabGroup() }
+                add("Remove from Group") { [weak self] in self?.removeFromTabGroup() }
             }
         }
         menu.addItem(.separator())
-        let others = (window?.tabbedWindows ?? []).compactMap { $0.windowController as? BrowserWindowController }
-            .filter { $0 !== self && !$0.isPinned }
-        _ = add("Close Tab") { [weak self] in self?.window?.performClose(nil) }
-        _ = add("Close Other Tabs", !others.isEmpty) { others.forEach { $0.closeNow() } }
-        _ = add("Move Tab to New Window", (window?.tabbedWindows?.count ?? 1) > 1) { [weak self] in
-            self?.window?.moveTabToNewWindow(nil)
+        let others = (host?.tabs ?? []).filter { $0 !== self && !$0.isPinned }
+        add("Close Tab") { [weak self] in if let self { self.host?.close(self) } }
+        add("Close Other Tabs", !others.isEmpty) { others.forEach { $0.closeNow() } }
+        add("Move Tab to New Window", (host?.tabs.count ?? 1) > 1) { [weak self] in
+            if let self { self.host?.moveToNewWindow(self) }
         }
         return menu
     }
 
-    /// Replaces the system menu for right-clicks on a tab in the tab bar with `tabMenu()`,
-    /// which adds Pin Tab and group commands. macOS offers no way to add to its own menu.
-    static func installTabBarMenu() {
-        NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { event in
-            guard let window = event.window,
-                  let controller = window.windowController as? BrowserWindowController,
-                  let frame = window.contentView?.superview,
-                  let tabBar = frame.hitTest(frame.convert(event.locationInWindow, from: nil))?.ancestor(named: "NSTabBar"),
-                  let tabs = window.tabbedWindows, tabs.count > 1 else { return event }
-            let width = tabBar.bounds.width - 16
-            let x = tabBar.convert(event.locationInWindow, from: nil).x - 8
-            let index = min(max(Int(x / (width / CGFloat(tabs.count))), 0), tabs.count - 1)
-            guard let target = tabs[index].windowController as? BrowserWindowController else { return event }
-            _ = controller
-            NSMenu.popUpContextMenu(target.tabMenu(), with: event, for: tabBar)
-            return nil
-        }
-    }
-
-    /// Saves the session and updates open tab groups soon.
-    private func tabsChanged() {
-        SessionRestore.shared.setNeedsSave()
-        TabGroups.shared.setNeedsSync()
-    }
-
     // MARK: Tab groups
 
-    /// The saved tab group this tab belongs to, shown as a colored dot before its title.
+    /// The saved tab group this tab belongs to, shown by the tab strip in the group's color.
     var tabGroupID: UUID? {
         didSet {
             if let id = tabGroupID, TabGroups.shared.group(id: id) == nil { tabGroupID = nil }
             guard tabGroupID != oldValue else { return }
-            setTitle(baseTitle)
-            if !isPrivate { tabsChanged() }
+            host?.groupChanged(self)
+            tabsChanged()
         }
     }
 
@@ -310,35 +260,33 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     /// the rest sleep until you switch to them.
     static func showTabGroup(_ id: UUID) {
         if let first = members(of: id).first {
+            first.host?.select(first)
             first.window?.makeKeyAndOrderFront(nil)
             return
         }
-        guard let group = TabGroups.shared.group(id: id), !group.tabs.isEmpty else { return }
-        var host: NSWindow?
-        // Each tab goes right after the first one, so add the rest last to first.
-        for i in [0] + group.tabs.indices.dropFirst().reversed() {
-            let saved = group.tabs[i]
-            let tab = SavedTab(url: saved.url, title: saved.title, group: id)
-            let opened = i == 0
-                ? open(url: tab.url, newWindow: true)
-                : open(url: nil, inTabOf: host, background: true, asleep: tab)
-            opened.tabGroupID = id
-            if host == nil { host = opened.window }
+        guard let group = TabGroups.shared.group(id: id), let head = group.tabs.first else { return }
+        let shown = open(url: head.url, newWindow: true)
+        shown.tabGroupID = id
+        for saved in group.tabs.dropFirst() {
+            open(url: nil, inTabOf: shown.window, background: true,
+                 asleep: SavedTab(url: saved.url, title: saved.title, group: id), at: .max)
         }
-        host?.makeKeyAndOrderFront(nil)
-        debugLog("opened tab group \(group.name): \(host?.tabbedWindows?.count ?? 1) tabs in a new window")
+        shown.window?.makeKeyAndOrderFront(nil)
     }
 
     /// Moves an open group's tabs into a window of their own, or opens it in a new one.
     static func moveTabGroupToNewWindow(_ id: UUID) {
         let tabs = members(of: id)
-        guard let first = tabs.first?.window else { return showTabGroup(id) }
-        if (first.tabbedWindows?.count ?? 1) > 1 { first.moveTabToNewWindow(nil) }
-        for tab in tabs.dropFirst() {
-            guard let window = tab.window else { continue }
-            first.addTabbedWindow(window, ordered: .above)
+        guard let first = tabs.first, let from = first.host else { return showTabGroup(id) }
+        let target: TabWindow
+        if from.tabs.count == tabs.count {
+            target = from
+        } else {
+            target = TabWindow(isPrivate: false)
+            for tab in tabs { target.adopt(tab, at: .max) }
+            target.showWindow(nil)
         }
-        first.makeKeyAndOrderFront(nil)
+        target.window?.makeKeyAndOrderFront(nil)
         TabGroups.shared.setNeedsSync()
     }
 
@@ -348,16 +296,17 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         members(of: id).forEach { $0.closeNow() }
     }
 
-    /// Adds this tab to a group. If none of the group's tabs are open, they open here,
+    /// Adds this tab to a group. If none of the group's tabs are open, they open next to it,
     /// asleep, so the group keeps all its tabs.
     func addToTabGroup(_ id: UUID) {
         guard !isPrivate, tabGroupID != id, let group = TabGroups.shared.group(id: id) else { return }
-        if Self.members(of: id).isEmpty {
-            for saved in group.tabs.reversed() {
-                let tab = SavedTab(url: saved.url, title: saved.title, group: id)
-                Self.open(url: nil, inTabOf: window, background: true, asleep: tab).tabGroupID = id
+        if Self.members(of: id).isEmpty, let host {
+            var index = (host.index(of: self) ?? 0) + 1
+            for saved in group.tabs {
+                Self.open(url: nil, inTabOf: window, background: true,
+                          asleep: SavedTab(url: saved.url, title: saved.title, group: id), at: index)
+                index += 1
             }
-            window?.makeKeyAndOrderFront(nil)
         }
         tabGroupID = id
     }
@@ -371,7 +320,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
 
     @objc private func tabGroupsChanged() {
         if let id = tabGroupID, TabGroups.shared.group(id: id) == nil { tabGroupID = nil }
-        setTitle(baseTitle)
+        host?.strip.reload()
     }
 
     /// Opens a URL from outside a tab (history, menus) in the frontmost normal window.
@@ -396,33 +345,75 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
             if host == nil {
                 host = open(url: url).window
             } else {
-                open(url: url, inTabOf: host, background: true)
+                open(url: url, inTabOf: host, background: true, at: .max)
             }
         }
         host?.makeKeyAndOrderFront(nil)
     }
 
+    /// The selected tab of the front window.
     static func frontmost(isPrivate: Bool) -> BrowserWindowController? {
-        let key = NSApp.keyWindow?.windowController as? BrowserWindowController
-        if let key, key.isPrivate == isPrivate { return key }
-        return NSApp.orderedWindows.lazy.compactMap { $0.windowController as? BrowserWindowController }
-            .first { $0.isPrivate == isPrivate }
+        TabWindow.frontmost(isPrivate: isPrivate)?.selectedTab
+    }
+
+    // MARK: Being shown
+
+    /// Called by the window when this tab becomes the selected one.
+    func didSelect() {
+        lastActive = Date()
+        if webView == nil { wake() }
+        window?.makeFirstResponder(webView ?? addressField)
+        refreshButtons()
+        if !isPrivate {
+            tabsChanged()
+            let controller = ExtensionManager.shared.controller
+            controller.didActivateTab(self)
+        }
+    }
+
+    func didDeselect() {
+        lastActive = Date()
+        suggestions.hide()
+    }
+
+    func didBecomeKey() {
+        lastActive = Date()
+        if webView == nil { wake(); window?.makeFirstResponder(webView) }
+        if !isPrivate {
+            tabsChanged()
+            let controller = ExtensionManager.shared.controller
+            controller.didActivateTab(self)
+            controller.didFocusWindow(ExtensionWindow.for(self))
+        }
+    }
+
+    func didResignKey() {
+        lastActive = Date()
+    }
+
+    /// Called by the window when this tab closes (or its window does).
+    func tabWillClose() {
+        debugLog("tab closed")
+        suggestions.hide()
+        if !isPrivate, !closingForDownload, let url = currentURL {
+            SessionRestore.shared.pushClosed(ClosedTab(url: url, title: baseTitle,
+                                                       state: webView?.interactionState ?? sleepingState))
+        }
+        observations = []
+        audioObservation = nil
+        webView?.stopLoading()
+        host = nil
+        Self.all.remove(self)
+        tabsChanged()
+        if !isPrivate { ExtensionManager.shared.controller.didCloseTab(self) }
+        if isPrivate, !Self.all.contains(where: \.isPrivate) {
+            Self.privateStore = nil // forget everything from the private session
+        }
     }
 
     private init(isPrivate: Bool, configuration: WKWebViewConfiguration?, asleep: SavedTab? = nil) {
         self.isPrivate = isPrivate
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820),
-                              styleMask: [.titled, .closable, .miniaturizable, .resizable],
-                              backing: .buffered, defer: true)
-        window.tabbingMode = .preferred
-        window.tabbingIdentifier = isPrivate ? "feather.private" : "feather"
-        window.titleVisibility = .hidden
-        window.setFrameAutosaveName("FeatherWindow")
-        window.minSize = NSSize(width: 480, height: 320)
-        if isPrivate { window.appearance = NSAppearance(named: .darkAqua) }
-        window.contentView = content
-        super.init(window: window)
-        window.delegate = self
+        super.init(window: nil)
         layoutContent()
         buildToolbar()
         NotificationCenter.default.addObserver(self, selector: #selector(tabGroupsChanged),
@@ -589,7 +580,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         let before = shieldsApplied
         shieldsApplied = nil // force a fresh apply so a recompiled rule list is picked up
         applyShields(for: webView.url?.host)
-        if before != shieldsApplied || rulesChanged, window?.isKeyWindow == true { webView.reload() }
+        if before != shieldsApplied || rulesChanged, isSelected { webView.reload() }
     }
 
     /// Each tab has its own content controller, so blocking can follow the site you're on.
@@ -605,13 +596,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     // MARK: Sleeping tabs
 
     func suspendIfIdle(now: Date, after limit: TimeInterval) {
-        guard let webView, let window, !window.isKeyWindow,
-              !window.occlusionState.contains(.visible),
-              now.timeIntervalSince(lastActive) >= limit,
+        // A background tab sleeps when idle; the selected tab only when its window is hidden too.
+        if isSelected, let window, window.isKeyWindow || window.occlusionState.contains(.visible) { return }
+        guard let webView, now.timeIntervalSince(lastActive) >= limit,
               webView.url != nil,
               webView.cameraCaptureState == .none, webView.microphoneCaptureState == .none else { return }
         webView.requestMediaPlaybackState { [weak self] state in
-            guard state != .playing, let self, self.window?.isKeyWindow == false else { return }
+            guard state != .playing, let self, !(self.isSelected && self.window?.isKeyWindow == true) else { return }
             self.sleep()
         }
     }
@@ -638,44 +629,6 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         }
         sleepingState = nil
         sleepingURL = nil
-    }
-
-    // MARK: NSWindowDelegate
-
-    func windowDidBecomeKey(_ notification: Notification) {
-        lastActive = Date()
-        if webView == nil {
-            wake()
-            window?.makeFirstResponder(webView)
-        }
-        if !isPrivate { tabsChanged() }
-        if !isPrivate {
-            let controller = ExtensionManager.shared.controller
-            controller.didActivateTab(self)
-            controller.didFocusWindow(ExtensionWindow.for(self))
-        }
-    }
-
-    func windowDidResignKey(_ notification: Notification) {
-        lastActive = Date()
-    }
-
-    func windowWillClose(_ notification: Notification) {
-        debugLog("tab closed")
-        suggestions.hide()
-        if !isPrivate, !closingForDownload, let url = currentURL {
-            SessionRestore.shared.pushClosed(ClosedTab(url: url, title: baseTitle,
-                                                       state: webView?.interactionState ?? sleepingState))
-        }
-        observations = []
-        audioObservation = nil
-        webView?.stopLoading()
-        Self.all.remove(self)
-        if !isPrivate { tabsChanged() }
-        if !isPrivate { ExtensionManager.shared.controller.didCloseTab(self) }
-        if isPrivate, !Self.all.contains(where: \.isPrivate) {
-            Self.privateStore = nil // forget everything from the private session
-        }
     }
 
     /// The "+" button in the tab bar and ⌘T.
@@ -740,8 +693,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
         toolbar.allowsUserCustomization = false
-        window?.toolbar = toolbar
-        window?.toolbarStyle = .unified
+        self.toolbar = toolbar
     }
 
     private func toolbarButton(_ symbol: String, _ label: String, _ action: Selector) -> NSButton {
@@ -754,7 +706,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [Item.back, Item.forward, Item.reload, Item.home, Item.video, .flexibleSpace, Item.address, Item.star, Item.newTab, .flexibleSpace, Item.downloads, Item.pins, Item.extensions, Item.shield]
+        [Item.back, Item.forward, Item.reload, Item.home, Item.video, .flexibleSpace, Item.address, Item.star, .flexibleSpace, Item.downloads, Item.pins, Item.extensions, Item.shield]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -819,17 +771,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         notifyExtensions(.title)
     }
 
-    /// Sets the tab's title, after its group's colored dot, and with 🔇 when muted or 🔊 while it plays sound.
+    /// Sets the tab's title; the tab strip shows it with the sound and group indicators.
     private func setTitle(_ title: String) {
         baseTitle = title
-        let group = tabGroupID.flatMap { TabGroups.shared.group(id: $0) }
-        let prefix = isMuted ? "🔇 " : (isPlayingAudio ? "🔊 " : "")
-        if isPinned {
-            // A pinned tab is its group's colored dot (grey when ungrouped) and the title's first 3 letters.
-            window?.title = (group?.color ?? .grey).dot + " " + prefix + String(title.prefix(3))
-        } else {
-            window?.title = (group.map { $0.color.dot + " " } ?? "") + prefix + title
-        }
+        host?.tabChanged(self)
     }
 
     private func notifyExtensions(_ properties: WKWebExtension.TabChangedProperties) {
@@ -893,7 +838,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
         if Downloads.shared.hasActive { Self.downloadsSeenThisRun = true }
         let show = Self.showsDownloadsButton
         downloadsButton.contentTintColor = Downloads.shared.hasActive ? .controlAccentColor : nil
-        if let item = window?.toolbar?.items.first(where: { $0.itemIdentifier == Item.downloads }), item.isHidden == show {
+        if let item = toolbar?.items.first(where: { $0.itemIdentifier == Item.downloads }), item.isHidden == show {
             item.isHidden = !show
         }
     }
@@ -1099,7 +1044,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
 
     /// Re-inserts the pins toolbar item so it re-measures the (possibly resized) button stack.
     private func refreshPinsItem() {
-        guard let toolbar = window?.toolbar,
+        guard let toolbar,
               let index = toolbar.items.firstIndex(where: { $0.itemIdentifier == Item.pins }) else { return }
         toolbar.removeItem(at: index)
         extensionPins.removeFromSuperview() // detach from the removed item before re-inserting
@@ -1588,9 +1533,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     private func startedDownload(_ download: WKDownload, in webView: WKWebView) {
         Downloads.shared.track(download, isPrivate: isPrivate)
         guard webView.backForwardList.currentItem == nil, sleepingURL == nil,
-              let window, window.tabbedWindows?.count ?? 1 > 1 else { return }
+              let host, host.tabs.count > 1 else { return }
         closingForDownload = true
-        DispatchQueue.main.async { window.close() }
+        DispatchQueue.main.async { host.close(self, force: true) }
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
@@ -1650,7 +1595,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     }
 
     func webViewDidClose(_ webView: WKWebView) {
-        window?.close()
+        host?.close(self, force: true)
     }
 
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
@@ -1725,14 +1670,14 @@ extension BrowserWindowController {
     func window(for context: WKWebExtensionContext) -> (any WKWebExtensionWindow)? { ExtensionWindow.for(self) }
 
     func indexInWindow(for context: WKWebExtensionContext) -> Int {
-        window?.tabGroup?.windows.firstIndex(of: window!) ?? 0
+        host?.index(of: self) ?? 0
     }
 
     func webView(for context: WKWebExtensionContext) -> WKWebView? { webView }
     func title(for context: WKWebExtensionContext) -> String? { webView?.title ?? window?.title }
     func url(for context: WKWebExtensionContext) -> URL? { webView?.url ?? sleepingURLForExtensions }
     func isLoadingComplete(for context: WKWebExtensionContext) -> Bool { !(webView?.isLoading ?? false) }
-    func isSelected(for context: WKWebExtensionContext) -> Bool { window?.isKeyWindow ?? false }
+    func isSelected(for context: WKWebExtensionContext) -> Bool { isSelected }
     func zoomFactor(for context: WKWebExtensionContext) -> Double { Double(webView?.pageZoom ?? 1) }
     func isPlayingAudio(for context: WKWebExtensionContext) -> Bool { isPlayingAudio }
     func isMuted(for context: WKWebExtensionContext) -> Bool { isMuted }
@@ -1744,12 +1689,13 @@ extension BrowserWindowController {
     }
 
     func activate(for context: WKWebExtensionContext, completionHandler: @escaping ((any Error)?) -> Void) {
+        host?.select(self)
         window?.makeKeyAndOrderFront(nil)
         completionHandler(nil)
     }
 
     func close(for context: WKWebExtensionContext, completionHandler: @escaping ((any Error)?) -> Void) {
-        window?.close()
+        closeNow()
         completionHandler(nil)
     }
 

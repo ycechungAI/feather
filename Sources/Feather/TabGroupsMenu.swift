@@ -129,9 +129,8 @@ final class TabGroupsMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
     }
 
     @objc func newGroupFromWindow(_ sender: Any?) {
-        guard let window = currentTab?.window else { return }
-        let tabs = (window.tabbedWindows ?? [window])
-            .compactMap { $0.windowController as? BrowserWindowController }
+        guard let host = currentTab?.host else { return }
+        let tabs = host.tabs
             .filter { $0.savedTab != nil }
         createGroup(from: tabs)
     }

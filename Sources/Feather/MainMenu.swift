@@ -22,7 +22,8 @@ enum MainMenu {
             item("New Private Window", #selector(AppDelegate.newPrivateWindow(_:)), "n", [.command, .shift]),
             item("Open Location…", #selector(BrowserWindowController.focusAddressBar(_:)), "l"),
             .separator(),
-            item("Close Tab", #selector(NSWindow.performClose(_:)), "w"),
+            item("Close Tab", #selector(TabWindow.closeTab(_:)), "w"),
+            item("Close Window", #selector(NSWindow.performClose(_:)), "w", [.command, .shift]),
             item("Reopen Closed Tab", #selector(AppDelegate.reopenClosedTab(_:)), "t", [.command, .shift]),
             item("Print…", #selector(BrowserWindowController.printPage(_:)), "p"),
         ])
@@ -90,8 +91,17 @@ enum MainMenu {
 
         let window = main.addSubmenu("Window", [
             item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
-            item("Show Previous Tab", #selector(NSWindow.selectPreviousTab(_:)), "{"),
-            item("Show Next Tab", #selector(NSWindow.selectNextTab(_:)), "}"),
+            item("Show Previous Tab", #selector(TabWindow.showPreviousTab(_:)), "{"),
+            item("Show Next Tab", #selector(TabWindow.showNextTab(_:)), "}"),
+            item("Next Tab", #selector(TabWindow.showNextTab(_:)), "\t", [.control]),
+            item("Previous Tab", #selector(TabWindow.showPreviousTab(_:)), "\t", [.control, .shift]),
+            item("Move Tab to New Window", #selector(TabWindow.moveTabToNewWindow(_:))),
+            .separator(),
+        ] + (1...9).map { n in
+            let tab = item(n == 9 ? "Last Tab" : "Tab \(n)", #selector(TabWindow.showTabNumber(_:)), "\(n)")
+            tab.tag = n
+            return tab
+        } + [
             .separator(),
             item("Bring All to Front", #selector(NSApplication.arrangeInFront(_:))),
         ])
