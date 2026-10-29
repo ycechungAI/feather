@@ -191,6 +191,8 @@ final class TabGroupsMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
     }
 
     /// Asks for a name and color, then groups the tabs.
+    func newGroup(from tabs: [BrowserWindowController]) { createGroup(from: tabs) }
+
     private func createGroup(from tabs: [BrowserWindowController]) {
         let saved = tabs.compactMap(\.savedTab).map { SavedTab(url: $0.url, title: $0.title) }
         guard !saved.isEmpty else { return }

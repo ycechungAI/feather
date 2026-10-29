@@ -82,11 +82,21 @@ Click the shield in the toolbar:
 - Reopen a session later from the Sessions menu: **Restore** opens its tabs in the frontmost window
   (or a new window). Each session also offers **Rename…** and **Delete**.
 
+## Pinned tabs and the tab right-click menu
+- Right-click a tab in the tab bar for **Pin Tab**, **Add Tab to Group** (or New Group…), **Remove from
+  Group**, Close Tab, Close Other Tabs and Move Tab to New Window. The menu's top line names the tab
+  it applies to.
+- A pinned tab moves to the left end of its window and shows only a colored dot (its group's color, grey if ungrouped) and the first 3 letters of its title. Close Other Tabs
+  keeps pinned tabs, and closing one asks first. Pins are saved with the session.
+- macOS draws the tab bar and its menu, so Feather shows its own menu in place of the system one
+  (same commands). Pinned tabs are not shrunk to an icon, as they are in Chrome.
+
 ## Tab groups
 - **Tab Groups ▸ New Group from Window's Tabs…** or **New Group from Current Tab…** asks for a name
   and a color. Groups are saved in `tab-groups.json` and survive quitting.
 - **Add Current Tab to Group** and **Remove Current Tab from Group** are in the same menu.
-- Each saved group is a colored chip at the left of the bookmark bar. Click a chip to bring the
+- Each saved group is a small colored chip at the left of the bookmark bar (just the name's first 3 letters;
+  hover for the full name). Groups of the same color sit together. Click a chip to bring the
   group's tabs forward, or to reopen them in a new window when they're closed. Only the first tab
   loads; the others sleep until you click them.
 - Right-click a chip (or use its submenu under Tab Groups) for **Rename…**, **Change Color**,

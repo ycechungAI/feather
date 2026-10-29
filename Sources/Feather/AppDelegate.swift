@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = true
         NSApp.mainMenu = MainMenu.build()
+        BrowserWindowController.installTabBarMenu()
         TabSuspender.shared.start()
         CacheLimiter.shared.start()
         ExtensionManager.shared.loadAll()

@@ -12,6 +12,8 @@ struct SavedTab: Codable, Equatable {
     var title: String
     /// The saved tab group the tab belongs to, if any. Optional, so older files still load.
     var group: UUID? = nil
+    /// Pinned tabs sit at the left end of the window. Optional, so older files still load.
+    var pinned: Bool? = nil
 }
 
 struct SavedWindow: Codable, Equatable {

@@ -217,15 +217,16 @@ private final class TabGroupChip: NSButton {
 
     override var intrinsicContentSize: NSSize {
         let text = (title as NSString).size(withAttributes: [.font: chipFont])
-        return NSSize(width: ceil(text.width) + 16, height: 18)
+        return NSSize(width: ceil(text.width) + 10, height: Self.chipHeight)
     }
 
-    private var chipFont: NSFont { .systemFont(ofSize: 11, weight: .semibold) }
+    static let chipHeight: CGFloat = 16
+    private var chipFont: NSFont { .systemFont(ofSize: 10, weight: .semibold) }
 
     override func draw(_ dirtyRect: NSRect) {
-        let rect = NSRect(x: 0, y: (bounds.height - 18) / 2, width: bounds.width, height: 18)
+        let rect = NSRect(x: 0, y: (bounds.height - Self.chipHeight) / 2, width: bounds.width, height: Self.chipHeight)
         (isHighlighted ? color.shadow(withLevel: 0.2) ?? color : color).setFill()
-        NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6).fill()
+        NSBezierPath(roundedRect: rect, xRadius: 5, yRadius: 5).fill()
         let textColor: NSColor = color == .systemYellow ? .black : .white
         let attributes: [NSAttributedString.Key: Any] = [.font: chipFont, .foregroundColor: textColor]
         let size = (title as NSString).size(withAttributes: attributes)
@@ -263,7 +264,7 @@ final class BookmarkBar: NSView {
         clip.addSubview(stack)
 
         groupStack.orientation = .horizontal
-        groupStack.spacing = 4
+        groupStack.spacing = 3
         groupStack.translatesAutoresizingMaskIntoConstraints = false
         groupStack.setContentCompressionResistancePriority(.required, for: .horizontal)
         groupStack.setHuggingPriority(.required, for: .horizontal)
@@ -341,9 +342,13 @@ final class BookmarkBar: NSView {
 
     @objc private func reloadGroups() {
         groupStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        let groups = TabGroups.shared.all
+        // Same-colored groups sit together; within a color, the order they were made in.
+        let order = TabGroupColor.allCases
+        let groups = TabGroups.shared.all.enumerated()
+            .sorted { (order.firstIndex(of: $0.element.color)!, $0.offset) < (order.firstIndex(of: $1.element.color)!, $1.offset) }
+            .map(\.element)
         for group in groups {
-            let title = group.name.count > 18 ? String(group.name.prefix(17)) + "…" : group.name
+            let title = String(group.name.prefix(3))
             let chip = TabGroupChip(title: title, target: self, action: #selector(groupClicked(_:)))
             chip.isBordered = false
             chip.color = group.color.nsColor

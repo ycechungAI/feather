@@ -3,6 +3,8 @@
 ## Unreleased: memory and disk
 
 ### Added
+- **Pin Tab** in a tab's right-click menu, with Add Tab to Group and the usual close commands. Pinned
+  tabs move to the left, show a colored dot and 3 letters, survive Close Other Tabs, ask before closing, and are restored.
 - **Saved tab groups,** like Chrome's and Brave's. Make a group from the window's tabs or the
   current tab, with a name and one of 8 colors (Tab Groups menu). Groups show as colored chips at
   the left of the bookmark bar: click one to bring its tabs forward or reopen them in a new window,

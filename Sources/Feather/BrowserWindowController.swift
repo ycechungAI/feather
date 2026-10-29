@@ -105,6 +105,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
                     ? open(url: tab.url, inTabOf: host, background: host != nil)
                     : open(url: nil, inTabOf: host, background: host != nil, asleep: tab)
                 opened.tabGroupID = tab.group
+                if tab.pinned == true { opened.setPinned(true, move: false) }
                 if host == nil { host = opened.window }
                 if i == selected { selectedTab = opened }
             }
@@ -152,7 +153,124 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     /// This tab as saved in the session and in tab groups; nil for blank and internal pages.
     var savedTab: SavedTab? {
         guard let url = currentURL, ["http", "https", "file"].contains(url.scheme ?? "") else { return nil }
-        return SavedTab(url: url, title: baseTitle, group: tabGroupID)
+        return SavedTab(url: url, title: baseTitle, group: tabGroupID, pinned: isPinned ? true : nil)
+    }
+
+    // MARK: Pinned tabs
+
+    /// A pinned tab sits at the left end of its window, shows a colored dot and 3 letters, is kept by
+    /// Close Other Tabs, and asks before it closes.
+    private(set) var isPinned = false
+    /// Set while closing on purpose (quit, Close Group, confirmed), so the pin prompt is skipped.
+    private var forceClose = false
+
+    func setPinned(_ pinned: Bool, move: Bool = true) {
+        guard pinned != isPinned else { return }
+        isPinned = pinned
+        setTitle(baseTitle)
+        if move { moveToPinBoundary() }
+        if !isPrivate { tabsChanged() }
+    }
+
+    /// Puts this tab just after the window's other pinned tabs.
+    private func moveToPinBoundary() {
+        guard let window, let group = window.tabGroup, group.windows.count > 1 else { return }
+        let others = group.windows.filter { $0 !== window }
+        let index = others.prefix { ($0.windowController as? BrowserWindowController)?.isPinned == true }.count
+        guard group.windows.firstIndex(of: window) != index else { return }
+        let selected = group.selectedWindow
+        group.removeWindow(window)
+        group.insertWindow(window, at: index)
+        selected?.makeKeyAndOrderFront(nil)
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard isPinned, !forceClose, !isPrivate else { return true }
+        let alert = NSAlert()
+        alert.messageText = "Close pinned tab?"
+        alert.informativeText = baseTitle
+        alert.addButton(withTitle: "Close Tab")
+        alert.addButton(withTitle: "Cancel")
+        alert.beginSheetModal(for: sender) { [weak self] response in
+            guard response == .alertFirstButtonReturn, let self else { return }
+            self.forceClose = true
+            sender.performClose(nil)
+        }
+        return false
+    }
+
+    /// Closes the tab without asking, even if pinned.
+    func closeNow() {
+        forceClose = true
+        window?.performClose(nil)
+    }
+
+    /// The tab's own menu, shown when you right-click it in the tab bar.
+    func tabMenu() -> NSMenu {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        let header = NSMenuItem(title: baseTitle.isEmpty ? "Tab" : baseTitle, action: nil, keyEquivalent: "")
+        header.isEnabled = false
+        menu.addItem(header)
+        menu.addItem(.separator())
+        func add(_ title: String, _ enabled: Bool = true, _ run: @escaping () -> Void) -> NSMenuItem {
+            let item = ClosureMenuItem(title: title, run: run)
+            item.isEnabled = enabled
+            menu.addItem(item)
+            return item
+        }
+        _ = add(isPinned ? "Unpin Tab" : "Pin Tab", !isPrivate) { [weak self] in self?.setPinned(!(self?.isPinned ?? false)) }
+        if !isPrivate {
+            let groups = TabGroups.shared.all
+            let sub = NSMenu()
+            sub.autoenablesItems = false
+            let tab = savedTab != nil
+            let new = ClosureMenuItem(title: "New Group…", run: { TabGroupsMenu.shared.newGroup(from: [self]) })
+            new.isEnabled = tab
+            sub.addItem(new)
+            if !groups.isEmpty { sub.addItem(.separator()) }
+            for group in groups {
+                let entry = ClosureMenuItem(title: group.name, run: { [weak self] in self?.addToTabGroup(group.id) })
+                entry.image = group.color.swatch
+                entry.state = group.id == tabGroupID ? .on : .off
+                entry.isEnabled = tab
+                sub.addItem(entry)
+            }
+            let groupItem = NSMenuItem(title: "Add Tab to Group", action: nil, keyEquivalent: "")
+            groupItem.submenu = sub
+            menu.addItem(groupItem)
+            if tabGroupID != nil {
+                _ = add("Remove from Group") { [weak self] in self?.removeFromTabGroup() }
+            }
+        }
+        menu.addItem(.separator())
+        let others = (window?.tabbedWindows ?? []).compactMap { $0.windowController as? BrowserWindowController }
+            .filter { $0 !== self && !$0.isPinned }
+        _ = add("Close Tab") { [weak self] in self?.window?.performClose(nil) }
+        _ = add("Close Other Tabs", !others.isEmpty) { others.forEach { $0.closeNow() } }
+        _ = add("Move Tab to New Window", (window?.tabbedWindows?.count ?? 1) > 1) { [weak self] in
+            self?.window?.moveTabToNewWindow(nil)
+        }
+        return menu
+    }
+
+    /// Replaces the system menu for right-clicks on a tab in the tab bar with `tabMenu()`,
+    /// which adds Pin Tab and group commands. macOS offers no way to add to its own menu.
+    static func installTabBarMenu() {
+        NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { event in
+            guard let window = event.window,
+                  let controller = window.windowController as? BrowserWindowController,
+                  let frame = window.contentView?.superview,
+                  let tabBar = frame.hitTest(frame.convert(event.locationInWindow, from: nil))?.ancestor(named: "NSTabBar"),
+                  let tabs = window.tabbedWindows, tabs.count > 1 else { return event }
+            let width = tabBar.bounds.width - 16
+            let x = tabBar.convert(event.locationInWindow, from: nil).x - 8
+            let index = min(max(Int(x / (width / CGFloat(tabs.count))), 0), tabs.count - 1)
+            guard let target = tabs[index].windowController as? BrowserWindowController else { return event }
+            _ = controller
+            NSMenu.popUpContextMenu(target.tabMenu(), with: event, for: tabBar)
+            return nil
+        }
     }
 
     /// Saves the session and updates open tab groups soon.
@@ -227,7 +345,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     /// Closes a group's open tabs. The group stays saved.
     static func closeTabGroup(_ id: UUID) {
         TabGroups.shared.syncNow()
-        members(of: id).forEach { $0.window?.performClose(nil) }
+        members(of: id).forEach { $0.closeNow() }
     }
 
     /// Adds this tab to a group. If none of the group's tabs are open, they open here,
@@ -704,9 +822,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToo
     /// Sets the tab's title, after its group's colored dot, and with 🔇 when muted or 🔊 while it plays sound.
     private func setTitle(_ title: String) {
         baseTitle = title
-        let dot = tabGroupID.flatMap { TabGroups.shared.group(id: $0) }.map { $0.color.dot + " " } ?? ""
+        let group = tabGroupID.flatMap { TabGroups.shared.group(id: $0) }
         let prefix = isMuted ? "🔇 " : (isPlayingAudio ? "🔊 " : "")
-        window?.title = dot + prefix + title
+        if isPinned {
+            // A pinned tab is its group's colored dot (grey when ungrouped) and the title's first 3 letters.
+            window?.title = (group?.color ?? .grey).dot + " " + prefix + String(title.prefix(3))
+        } else {
+            window?.title = (group.map { $0.color.dot + " " } ?? "") + prefix + title
+        }
     }
 
     private func notifyExtensions(_ properties: WKWebExtension.TabChangedProperties) {
@@ -1613,6 +1736,7 @@ extension BrowserWindowController {
     func zoomFactor(for context: WKWebExtensionContext) -> Double { Double(webView?.pageZoom ?? 1) }
     func isPlayingAudio(for context: WKWebExtensionContext) -> Bool { isPlayingAudio }
     func isMuted(for context: WKWebExtensionContext) -> Bool { isMuted }
+    func isPinned(for context: WKWebExtensionContext) -> Bool { isPinned }
 
     func setMuted(_ muted: Bool, for context: WKWebExtensionContext, completionHandler: @escaping ((any Error)?) -> Void) {
         setMuted(muted)
@@ -1674,5 +1798,32 @@ final class KVOObserver: NSObject {
     override func observeValue(forKeyPath keyPath: String?, of object: Any?,
                                change: [NSKeyValueChangeKey: Any]?, context: UnsafeMutableRawPointer?) {
         if Thread.isMainThread { onChange() } else { DispatchQueue.main.async(execute: onChange) }
+    }
+}
+
+/// A menu item that runs a closure.
+final class ClosureMenuItem: NSMenuItem {
+    private let run: () -> Void
+
+    init(title: String, run: @escaping () -> Void) {
+        self.run = run
+        super.init(title: title, action: #selector(fire), keyEquivalent: "")
+        target = self
+    }
+
+    required init(coder: NSCoder) { fatalError() }
+
+    @objc private func fire() { run() }
+}
+
+private extension NSView {
+    /// This view or the nearest superview whose class is named `name`.
+    func ancestor(named name: String) -> NSView? {
+        var view: NSView? = self
+        while let v = view {
+            if String(describing: type(of: v)) == name { return v }
+            view = v.superview
+        }
+        return nil
     }
 }

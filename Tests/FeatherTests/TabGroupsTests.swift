@@ -166,4 +166,13 @@ struct TabGroupsTests {
         let plain = String(decoding: try JSONEncoder().encode(old), as: UTF8.self)
         #expect(!plain.contains("group"))
     }
+
+    @Test func testSavedTabPinnedIsOptional() throws {
+        let old = try JSONDecoder().decode(SavedTab.self, from: Data(#"{"url":"https://a.com","title":"A"}"#.utf8))
+        #expect(old.pinned == nil)
+        let pinned = SavedTab(url: URL(string: "https://a.com")!, title: "A", pinned: true)
+        let decoded = try JSONDecoder().decode(SavedTab.self, from: JSONEncoder().encode(pinned))
+        #expect(decoded.pinned == true)
+        #expect(!String(decoding: try JSONEncoder().encode(old), as: UTF8.self).contains("pinned"))
+    }
 }
