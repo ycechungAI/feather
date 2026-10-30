@@ -10,6 +10,9 @@
   window). Only the selected tab's page is in the window, so WebKit throttles the others.
 - **Inspect Element** and View ▸ Show Web Inspector (⌥⌘I), turned on in Settings ▸ Developer, for
   reading a page's console when something breaks. It also applies to tabs already open.
+- **More debug logging** when Feather runs with `FEATHER_DEBUG=1`: every page request, each response
+  saved as a download, each failed load and each page crash, to track down pages that fail only
+  sometimes (such as amazon.ca's cart).
 - **One bookmark bar per window** instead of one per tab, which saves memory with many tabs.
 - **Pin Tab** in a tab's right-click menu, with Add Tab to Group and the usual close commands. Pinned
   tabs are narrow (about 3 letters) at the left, survive Close Other Tabs, ask before closing, and are

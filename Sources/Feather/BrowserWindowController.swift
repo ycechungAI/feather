@@ -1439,6 +1439,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                  decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
         guard let url = action.request.url else { return decisionHandler(.allow) }
+        debugLog("nav \(action.request.httpMethod ?? "-") \(action.navigationType.rawValue) main=\(action.targetFrame?.isMainFrame.description ?? "new") \(url.absoluteString)")
 
         if action.shouldPerformDownload { return decisionHandler(.download) }
 
@@ -1503,6 +1504,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         }
         let disposition = (response.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition") ?? ""
         if !response.canShowMIMEType || (response.isForMainFrame && disposition.lowercased().hasPrefix("attachment")) {
+            debugLog("download main=\(response.isForMainFrame) status=\((response.response as? HTTPURLResponse)?.statusCode ?? 0) mime=\(response.response.mimeType ?? "-") \(response.response.url?.absoluteString ?? "-")")
             decisionHandler(.download)
         } else {
             decisionHandler(.allow)
@@ -1529,6 +1531,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         let ns = error as NSError
+        debugLog("provisional fail \(ns.domain) \(ns.code) \(ns.userInfo[NSURLErrorFailingURLErrorKey] ?? "-")")
         if ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled { return }
         if ns.domain == "WebKitErrorDomain" && ns.code == 102 { return } // interrupted by policy change
 
@@ -1564,6 +1567,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        debugLog("web content process terminated \(webView.url?.absoluteString ?? "-")")
         webView.reload() // a crashed or memory-killed page recovers on its own
     }
 

@@ -183,6 +183,9 @@ Then choose **Shields ▸ Reload Blocklists**.
 - Developer: **Inspect Element** in a page's right-click menu, and **View ▸ Show Web Inspector (⌥⌘I)**,
   with the console, network and page elements. Off by default, because the inspector can read
   everything on a page.
+- To find out why a page fails to load, start Feather from Terminal with `FEATHER_DEBUG=1`
+  (`FEATHER_DEBUG=1 /Applications/Feather.app/Contents/MacOS/Feather`). It logs every page request,
+  each response saved as a download, each failed load and each page crash.
 
 Changes take effect right away. The same values can still be set from Terminal, for example:
 
