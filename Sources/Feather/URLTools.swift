@@ -16,8 +16,9 @@ enum URLTools {
             if lower.hasPrefix("localhost") || lower.hasPrefix("127.0.0.1") {
                 return URL(string: "http://" + text)
             }
-            if text.contains("."), let url = URL(string: "https://" + text), url.host != nil {
-                return url
+            // Routers, printers and other machines on your network rarely serve HTTPS.
+            if text.contains("."), let url = URL(string: "https://" + text), let host = url.host {
+                return isLocal(host) ? URL(string: "http://" + text) : url
             }
         }
         return SearchEngine.url(for: text, prefix: Settings.searchURL)
@@ -30,12 +31,14 @@ enum URLTools {
     ]
 
     /// Removes click-tracking parameters. Returns nil when nothing changed.
+    /// Works on the query as sent, so the parameters that stay keep their exact encoding
+    /// ("%2B" stays a plus sign instead of becoming "+", which servers read as a space).
     static func stripTracking(_ url: URL) -> URL? {
         guard var comps = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let items = comps.queryItems, !items.isEmpty else { return nil }
-        let kept = items.filter { !trackingParams.contains($0.name.lowercased()) }
+              let items = comps.percentEncodedQueryItems, !items.isEmpty else { return nil }
+        let kept = items.filter { !trackingParams.contains(($0.name.removingPercentEncoding ?? $0.name).lowercased()) }
         guard kept.count != items.count else { return nil }
-        comps.queryItems = kept.isEmpty ? nil : kept
+        comps.percentEncodedQueryItems = kept.isEmpty ? nil : kept
         return comps.url
     }
 
@@ -51,6 +54,9 @@ enum URLTools {
     static func isLocal(_ host: String) -> Bool {
         var h = host.lowercased()
         if h.hasPrefix("["), h.hasSuffix("]") { h = String(h.dropFirst().dropLast()) }
+        if h.hasSuffix(".") { h.removeLast() } // "localhost." is localhost
+        // An IPv4 address written as IPv6 (::ffff:192.168.1.1) is as local as the address itself.
+        if h.hasPrefix("::ffff:"), h.dropFirst(7).contains(".") { return isLocal(String(h.dropFirst(7))) }
         if h == "localhost" || h.hasSuffix(".localhost") || h.hasSuffix(".local") || h.hasSuffix(".test") {
             return true
         }

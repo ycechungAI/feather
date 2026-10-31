@@ -3,6 +3,9 @@
 ## Unreleased: memory and disk
 
 ### Added
+- **214 tests (from 127),** now covering the address bar, tracking removal, HTTPS upgrades, what
+  Shields blocks (Amazon, YouTube and GitHub keep working), navigation decisions, downloads, history,
+  and the Picture in Picture and YouTube ad scripts, run in JavaScriptCore against a fake page.
 - **Feather's own tab strip** replaces macOS window tabs: fixed-width tabs from the left that shrink
   only when full (then a » list), narrow pinned tabs with a site badge, Chrome-style groups (colored
   label, tint and line; click the label to collapse), × and middle-click to close, drag to reorder,
@@ -43,6 +46,12 @@
 - **The release build is optimized for size** (`-Osize`, dead stripping): the binary is 12% smaller.
 
 ### Fixed
+- **Removing tracking parameters could change the rest of a link.** On a link with `utm_source`
+  or `fbclid`, other parameters were re-encoded: `%2B` (a plus sign) became `+`, which servers read
+  as a space, so a search for "c++" or a sign-in redirect could break. They now pass through as sent.
+- **Typing a router's or printer's address failed.** `192.168.1.1` or `printer.local` opened over
+  HTTPS, which those devices rarely serve. Addresses on your own network now open over HTTP, and
+  `localhost.` and IPv6-mapped local addresses are no longer forced to HTTPS.
 - **YouTube stopped, or Picture in Picture closed, every few minutes.** Feather skipped YouTube ads
   by jumping to their end, and YouTube answered by interrupting playback. Ads are now muted and play
   to the end. Hidden pages (a video floating in PiP over another app) no longer have their timers

@@ -163,6 +163,11 @@ system because the newer default one fails with "Unknown error parsing property 
 Command Line Tools in Swift 6.4. The tests use Swift Testing, which the Command Line Tools include
 (XCTest needs full Xcode). `swift scripts/make-icon.swift` redraws the app icon.
 
+The tests (214) cover the address bar, tracking-parameter removal, HTTPS upgrades, which requests
+Shields blocks, navigation decisions (`javascript:` links, opening other apps), downloads, history,
+bookmarks, tabs and sessions. The scripts Feather puts into pages (Picture in Picture, YouTube ads)
+run in JavaScriptCore against a small fake page, so they're tested without a browser.
+
 Building on an ExFAT or FAT drive works: the build script removes the hidden `._*` files that macOS
 creates on those drives, which would otherwise break the app's signature.
 

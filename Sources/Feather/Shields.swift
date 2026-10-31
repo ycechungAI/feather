@@ -82,18 +82,22 @@ final class Shields {
     private static func userDomains() -> [String] {
         let dir = Settings.supportDirectory
         let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
-        var out: [String] = []
+        return files.filter { $0.pathExtension == "txt" }.flatMap { file in
+            (try? String(contentsOf: file, encoding: .utf8)).map(domains(inList:)) ?? []
+        }
+    }
+
+    /// The domains in one blocklist file: a plain domain list or a hosts file.
+    static func domains(inList text: String) -> [String] {
         let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789.-_")
         let skip: Set<String> = ["localhost", "localhost.localdomain", "local", "broadcasthost", "0.0.0.0"]
-        for file in files where file.pathExtension == "txt" {
-            guard let text = try? String(contentsOf: file, encoding: .utf8) else { continue }
-            for raw in text.split(whereSeparator: \.isNewline) {
-                let line = raw.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)[0]
-                guard let host = line.split(whereSeparator: \.isWhitespace).last?.lowercased(),
-                      host.contains("."), !skip.contains(host),
-                      host.unicodeScalars.allSatisfy(allowed.contains) else { continue }
-                out.append(host)
-            }
+        var out: [String] = []
+        for raw in text.split(whereSeparator: \.isNewline) {
+            let line = raw.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)[0]
+            guard let host = line.split(whereSeparator: \.isWhitespace).last?.lowercased(),
+                  host.contains("."), !skip.contains(host),
+                  host.unicodeScalars.allSatisfy(allowed.contains) else { continue }
+            out.append(host)
         }
         return out
     }

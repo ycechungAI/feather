@@ -1479,56 +1479,36 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         guard let url = action.request.url else { return decisionHandler(.allow) }
         debugLog("nav \(action.request.httpMethod ?? "-") \(action.navigationType.rawValue) main=\(action.targetFrame?.isMainFrame.description ?? "new") \(url.absoluteString)")
 
-        if action.shouldPerformDownload { return decisionHandler(.download) }
-
-        // Firefox add-on files open the install prompt instead of downloading.
-        if url.pathExtension.lowercased() == "xpi", !isPrivate {
+        let isExtensionPage = ExtensionManager.shared.controller.extensionContext(for: url) != nil
+        let policy = NavigationPolicy.decide(.init(
+            url: url, method: action.request.httpMethod, isMainFrame: action.targetFrame?.isMainFrame,
+            navigationType: action.navigationType, modifiers: action.modifierFlags, buttonNumber: action.buttonNumber,
+            shouldDownload: action.shouldPerformDownload, isPrivate: isPrivate, isExtensionPage: isExtensionPage,
+            httpsOnly: Settings.httpsOnly, insecureAllowed: insecureAllowed))
+        switch policy {
+        case .allow:
+            // Per-site Shields: switch blocking on or off before the new page starts loading.
+            if action.targetFrame?.isMainFrame == true, !isExtensionPage { applyShields(for: url.host) }
+            decisionHandler(.allow)
+        case .download:
+            decisionHandler(.download)
+        case .installAddon:
             let window = self.window
             Task { await ExtensionManager.shared.install(fromWeb: url, window: window) }
-            return decisionHandler(.cancel)
+            decisionHandler(.cancel)
+        case .openInNewTab(let background):
+            Self.open(url: url, isPrivate: isPrivate, inTabOf: window, background: background)
+            decisionHandler(.cancel)
+        case .cancel:
+            decisionHandler(.cancel)
+        case .openExternally:
+            NSWorkspace.shared.open(url)
+            decisionHandler(.cancel)
+        case .load(let replacement, let upgradedHost):
+            if let upgradedHost { upgradedHosts.insert(upgradedHost) }
+            decisionHandler(.cancel)
+            webView.load(URLRequest(url: replacement))
         }
-        // Extension pages (settings, popups opened as tabs) load inside WebKit.
-        if ExtensionManager.shared.controller.extensionContext(for: url) != nil {
-            return decisionHandler(.allow)
-        }
-
-        // ⌘-click or middle-click opens a new tab.
-        if action.navigationType == .linkActivated,
-           action.modifierFlags.contains(.command) || action.buttonNumber == 2 {
-            Self.open(url: url, isPrivate: isPrivate, inTabOf: window,
-                      background: !action.modifierFlags.contains(.shift))
-            return decisionHandler(.cancel)
-        }
-
-        // `javascript:` must never be honoured as a navigation: a page that manages to
-        // steer one here could otherwise run script outside its own origin.
-        let scheme = url.scheme?.lowercased() ?? ""
-        if scheme == "javascript" { return decisionHandler(.cancel) }
-
-        // Hand mailto:, facetime:, app links etc. to the system, but only for a real
-        // user click so a page can't silently launch other apps.
-        if !["http", "https", "about", "file", "data", "blob"].contains(scheme) {
-            if action.navigationType == .linkActivated { NSWorkspace.shared.open(url) }
-            return decisionHandler(.cancel)
-        }
-
-        if action.targetFrame?.isMainFrame == true {
-            if action.request.httpMethod == "GET", let clean = URLTools.stripTracking(url) {
-                decisionHandler(.cancel)
-                webView.load(URLRequest(url: clean))
-                return
-            }
-            if Settings.httpsOnly, let host = url.host?.lowercased(), !insecureAllowed.contains(host),
-               let secure = URLTools.httpsUpgrade(url) {
-                upgradedHosts.insert(host)
-                decisionHandler(.cancel)
-                webView.load(URLRequest(url: secure))
-                return
-            }
-            // Per-site Shields: switch blocking on or off before the new page starts loading.
-            applyShields(for: url.host)
-        }
-        decisionHandler(.allow)
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse,
