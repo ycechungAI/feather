@@ -1074,9 +1074,19 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         guard let webView else { return }
         // Ask every frame what it has, then act in the one frame that matters.
         var probes: [(frame: WKFrameInfo?, active: Bool, score: Double)] = []
-        let group = DispatchGroup()
+        var pending = frames.count, acted = false
+        // A frame that never answers (a stale or suspended iframe) must not leave the button
+        // doing nothing, so act after 2 seconds with whichever frames answered.
+        func finish() {
+            guard !acted else { return }
+            acted = true
+            act()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            if !acted { debugLog("pip probes timed out with \(pending) frames unanswered") }
+            finish()
+        }
         for frame in frames {
-            group.enter()
             webView.callAsyncJavaScript(Self.pipProbeScript, arguments: [:], in: frame, in: .page) { result in
                 if case .success(let value as String) = result,
                    let data = value.data(using: .utf8),
@@ -1085,17 +1095,19 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
                 } else if case .failure(let error) = result {
                     debugLog("pip probe failed: \(error)")
                 }
-                group.leave()
+                pending -= 1
+                if pending == 0 { finish() }
             }
         }
-        group.notify(queue: .main) { [weak self] in
-            guard let self else { return }
+        func act() {
+            debugLog("pip probes \(probes.map { "\($0.frame?.request.url?.absoluteString.prefix(60) ?? "-") active=\($0.active) score=\($0.score)" })")
             let target = probes.first(where: \.active) ?? probes.filter { $0.score > 0 }.max { $0.score < $1.score }
             guard let target else {
                 return self.showNotice("No video found on this page",
                                        "Start the video playing, then try Picture in Picture again.")
             }
             webView.callAsyncJavaScript(Self.pipScript, arguments: [:], in: target.frame, in: .page) { [weak self] result in
+                debugLog("pip toggle: \(result)")
                 switch result {
                 case .success(let value as String) where value == "none":
                     self?.showNotice("No video found on this page", "Start the video playing, then try again.")
@@ -1118,6 +1130,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
             guard let webView = self?.webView else { return }
             webView.callAsyncJavaScript(Self.pipProbeScript, arguments: [:], in: frame, in: .page) { [weak self] result in
+                debugLog("pip confirm: \(result)")
                 guard case .success(let value as String) = result, !value.contains("\"active\":true") else { return }
                 self?.showNotice("Picture in Picture didn't start",
                                  "macOS didn't open the floating window for this video. Try pausing and playing it, then try again.")
@@ -1227,6 +1240,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
             if (video.webkitSupportsPresentationMode
                 && video.webkitSupportsPresentationMode('picture-in-picture')) {
                 video.webkitSetPresentationMode('picture-in-picture');
+                window.webkit?.messageHandlers?.featherPiP?.postMessage('debug entered via webkit mode after: ' + lastError);
                 return 'entered';
             }
             lastError += ' | webkit PiP not supported';

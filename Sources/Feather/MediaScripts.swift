@@ -27,13 +27,29 @@ enum MediaScripts {
         return setAttribute.call(this, name, value);
       };
 
-      let wanted = null, swappedAt = 0;
-      const swapped = () => { swappedAt = Date.now(); };
+      let wanted = null, swappedAt = 0, reopenAfterSwap = false;
+      const post = m => window.webkit?.messageHandlers?.featherPiP?.postMessage(m);
+      const swapped = e => {
+        swappedAt = Date.now();
+        if (wanted && e.target === wanted) {
+          post(`debug ${e.type}`);
+          reopenAfterSwap = true;
+        }
+      };
       document.addEventListener('emptied', swapped, true);
       document.addEventListener('loadstart', swapped, true);
+      // When an ad starts or ends, YouTube swaps the video's source. macOS closes the floating
+      // window, but WebKit sends no event and still reports the video as in PiP. So once the
+      // new source plays, ask Feather to reset the video and reopen the window.
+      document.addEventListener('playing', e => {
+        if (!reopenAfterSwap || e.target !== wanted) return;
+        reopenAfterSwap = false;
+        post('restore');
+      }, true);
       const changed = e => {
         const v = e.target;
         if (!(v instanceof HTMLVideoElement)) return;
+        post(`debug ${e.type} mode=${v.webkitPresentationMode} wanted=${v === wanted} hadWanted=${!!wanted}`);
         if (document.pictureInPictureElement === v || v.webkitPresentationMode === 'picture-in-picture') {
           wanted = v;
           return;
@@ -41,10 +57,11 @@ enum MediaScripts {
         if (v !== wanted) return;
         const ad = document.querySelector('.html5-video-player.ad-showing');
         if (ad || Date.now() - swappedAt < 3000) {
-          window.webkit?.messageHandlers?.featherPiP?.postMessage('restore');
+          post('restore');
         } else {
-          window.webkit?.messageHandlers?.featherPiP?.postMessage('left');
+          post('left');
           wanted = null;
+          reopenAfterSwap = false;
         }
       };
       document.addEventListener('webkitpresentationmodechanged', changed, true);
