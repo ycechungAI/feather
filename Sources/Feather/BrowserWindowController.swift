@@ -1417,8 +1417,9 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
 
     private var restoringPictureInPicture = false
 
-    /// Called by PiPKeeper when an ad or the next video closed the floating window. The video may still be loading
-    /// its new source, so this tries once a second for up to 10 seconds.
+    /// Called by PiPKeeper when an ad or the next video closed the floating window. The video may
+    /// still be loading its new source (YouTube counts down for several seconds before the next
+    /// video), so this tries once a second for up to 20 seconds.
     func restorePictureInPicture(in frame: WKFrameInfo, attempt: Int = 0) {
         guard attempt > 0 || !restoringPictureInPicture else { return }
         restoringPictureInPicture = true
@@ -1427,9 +1428,9 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
             webView.callAsyncJavaScript(Self.pipRestoreScript, arguments: [:], in: frame, in: .page) { [weak self] result in
                 debugLog("pip restore attempt \(attempt): \(result)")
                 guard let self else { return }
-                if case .success(let value as String) = result, value == "entered" || attempt >= 9 {
+                if case .success(let value as String) = result, value == "entered" || attempt >= 19 {
                     self.restoringPictureInPicture = false
-                } else if attempt >= 9 {
+                } else if attempt >= 19 {
                     self.restoringPictureInPicture = false
                 } else {
                     self.restorePictureInPicture(in: frame, attempt: attempt + 1)

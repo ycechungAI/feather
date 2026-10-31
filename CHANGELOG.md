@@ -46,7 +46,7 @@
 - **YouTube stopped, or Picture in Picture closed, every few minutes.** Feather skipped YouTube ads
   by jumping to their end, and YouTube answered by interrupting playback. Ads are now muted and play
   to the end. Hidden pages (a video floating in PiP over another app) no longer have their timers
-  slowed to minutes, Feather retries reopening PiP for up to 10 seconds after an ad, and a tab
+  slowed to minutes, Feather retries reopening PiP for up to 20 seconds, and a tab
   with a playing or floating video never goes to sleep.
 - **Picture in Picture closed when YouTube's next video started, and wouldn't reopen until a
   reload.** The floating window closed, but the browser's standard PiP state kept saying the video

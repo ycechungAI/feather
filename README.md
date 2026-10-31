@@ -43,7 +43,7 @@ Apple M4, macOS 27, October 2026. Full results and method:
   costs almost no memory. Turn this off in Settings, then use **History ▸ Reopen Last Session**
   when you want it.
 - **Picture in Picture:** the PiP button next to Home floats the page's video, on any site, including
-  YouTube and embedded players. If a YouTube ad closes the floating window, Feather reopens it.
+  YouTube and embedded players. If YouTube's next video (or an ad) closes the floating window, Feather reopens it.
 - **Download video (⌥⌘S):** the ⤓ button next to PiP saves the page's video while it plays, into
   Downloads. Plain video files download as they are. HLS streams (most sites) are saved part by
   part with your login for the site, as an `.mp4`, or as a `.ts` for older streams (`.ts` plays in
