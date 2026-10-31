@@ -1168,20 +1168,35 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
     private static let pipScript = """
         const active = document.pictureInPictureElement
             || [...document.querySelectorAll('video')].find(v => v.webkitPresentationMode === 'picture-in-picture');
-        if (active) {
-            if (document.pictureInPictureElement) await document.exitPictureInPicture();
-            else active.webkitSetPresentationMode('inline');
-            return 'exited';
-        }
+        if (active && await \(pipExitScript)) return 'exited';
         """ + pipEnterScript
 
-    /// Reopens the floating window after YouTube closed it for an ad; does nothing if it's open.
+    /// Reopens the floating window after YouTube closed it for an ad. The video can still be
+    /// marked as in PiP after its window closed (an ad swap), so it's reset before reopening.
     private static let pipRestoreScript = """
-        if (document.pictureInPictureElement
-            || [...document.querySelectorAll('video')].some(v => v.webkitPresentationMode === 'picture-in-picture')) {
-            return 'entered';
-        }
+        const active = document.pictureInPictureElement
+            || [...document.querySelectorAll('video')].find(v => v.webkitPresentationMode === 'picture-in-picture');
+        if (active) await \(pipExitScript);
         """ + pipEnterScript
+
+    /// An expression: leaves PiP for `active`, true if that worked. When the window is already
+    /// gone, exiting can hang until a reload, so after a second it forces the video back inline
+    /// and gives false, and the caller opens PiP afresh.
+    private static let pipExitScript = """
+        (async () => {
+            const exit = document.pictureInPictureElement
+                ? document.exitPictureInPicture().then(() => true, () => false)
+                : new Promise(r => {
+                    active.addEventListener('webkitpresentationmodechanged', () => r(true), { once: true });
+                    active.webkitSetPresentationMode('inline');
+                });
+            const done = await Promise.race([exit, new Promise(r => setTimeout(() => r(false), 1000))]);
+            if (done && !document.pictureInPictureElement && active.webkitPresentationMode !== 'picture-in-picture') return true;
+            try { active.webkitSetPresentationMode('inline'); } catch (e) {}
+            await new Promise(r => setTimeout(r, 300)); // let the mode change settle
+            return false;
+        })()
+        """
 
     private static let pipEnterScript = """
         // Candidate videos: must have data and be visible.
@@ -1404,6 +1419,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         DispatchQueue.main.asyncAfter(deadline: .now() + (attempt == 0 ? 0.4 : 1)) { [weak self] in
             guard let self, let webView = self.webView else { self?.restoringPictureInPicture = false; return }
             webView.callAsyncJavaScript(Self.pipRestoreScript, arguments: [:], in: frame, in: .page) { [weak self] result in
+                debugLog("pip restore attempt \(attempt): \(result)")
                 guard let self else { return }
                 if case .success(let value as String) = result, value == "entered" || attempt >= 9 {
                     self.restoringPictureInPicture = false

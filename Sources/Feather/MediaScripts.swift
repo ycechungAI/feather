@@ -43,6 +43,7 @@ enum MediaScripts {
         if (ad || Date.now() - swappedAt < 3000) {
           window.webkit?.messageHandlers?.featherPiP?.postMessage('restore');
         } else {
+          window.webkit?.messageHandlers?.featherPiP?.postMessage('left');
           wanted = null;
         }
       };
@@ -113,7 +114,8 @@ final class PiPKeeper: NSObject, WKScriptMessageHandler {
     static let shared = PiPKeeper()
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard let webView = message.webView,
+        debugLog("pip \(message.body) from \(message.frameInfo.request.url?.absoluteString ?? "-")")
+        guard message.body as? String == "restore", let webView = message.webView,
               let tab = BrowserWindowController.all.first(where: { $0.webView === webView }) else { return }
         tab.restorePictureInPicture(in: message.frameInfo)
     }
