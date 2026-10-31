@@ -1164,12 +1164,26 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         alert.beginSheetModal(for: window)
     }
 
+    /// Whether a video is in PiP, and a way to switch it. WebKit's own presentation mode is the
+    /// truth: the standard `document.pictureInPictureElement` can keep pointing at a video after
+    /// its floating window closed (YouTube's next video), and `requestPictureInPicture()` then
+    /// succeeds without opening anything.
+    private static let pipStateScript = """
+        const inPip = v => 'webkitPresentationMode' in v
+            ? v.webkitPresentationMode === 'picture-in-picture' : document.pictureInPictureElement === v;
+        const setMode = (v, mode) => new Promise(resolve => {
+            const done = () => resolve(inPip(v) === (mode === 'picture-in-picture'));
+            v.addEventListener('webkitpresentationmodechanged', done, { once: true });
+            setTimeout(done, 1000);
+            v.webkitSetPresentationMode(mode);
+        });
+        """
+
     /// Reports whether this frame has a video in PiP, and how good its best candidate is
     /// (playing beats paused, bigger beats smaller).
-    private static let pipProbeScript = """
+    private static let pipProbeScript = pipStateScript + """
         const videos = [...document.querySelectorAll('video')];
-        const active = !!document.pictureInPictureElement
-            || videos.some(v => v.webkitPresentationMode === 'picture-in-picture');
+        const active = videos.some(inPip);
         let score = 0;
         for (const v of videos) {
             if (v.readyState === 0 || v.offsetWidth === 0 || v.offsetHeight === 0) continue;
@@ -1178,38 +1192,20 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         return JSON.stringify({active, score});
         """
 
-    private static let pipScript = """
-        const active = document.pictureInPictureElement
-            || [...document.querySelectorAll('video')].find(v => v.webkitPresentationMode === 'picture-in-picture');
-        if (active && await \(pipExitScript)) return 'exited';
+    private static let pipScript = pipStateScript + """
+        const active = [...document.querySelectorAll('video')].find(inPip);
+        if (active) {
+            if ('webkitPresentationMode' in active) await setMode(active, 'inline');
+            else await document.exitPictureInPicture().catch(() => {});
+            return 'exited';
+        }
         """ + pipEnterScript
 
-    /// Reopens the floating window after YouTube closed it for an ad. The video can still be
-    /// marked as in PiP after its window closed (an ad swap), so it's reset before reopening.
-    private static let pipRestoreScript = """
-        const active = document.pictureInPictureElement
-            || [...document.querySelectorAll('video')].find(v => v.webkitPresentationMode === 'picture-in-picture');
-        if (active) await \(pipExitScript);
+    /// Reopens the floating window after YouTube closed it (an ad or the next video); does
+    /// nothing if it's open.
+    private static let pipRestoreScript = pipStateScript + """
+        if ([...document.querySelectorAll('video')].some(inPip)) return 'entered';
         """ + pipEnterScript
-
-    /// An expression: leaves PiP for `active`, true if that worked. When the window is already
-    /// gone, exiting can hang until a reload, so after a second it forces the video back inline
-    /// and gives false, and the caller opens PiP afresh.
-    private static let pipExitScript = """
-        (async () => {
-            const exit = document.pictureInPictureElement
-                ? document.exitPictureInPicture().then(() => true, () => false)
-                : new Promise(r => {
-                    active.addEventListener('webkitpresentationmodechanged', () => r(true), { once: true });
-                    active.webkitSetPresentationMode('inline');
-                });
-            const done = await Promise.race([exit, new Promise(r => setTimeout(() => r(false), 1000))]);
-            if (done && !document.pictureInPictureElement && active.webkitPresentationMode !== 'picture-in-picture') return true;
-            try { active.webkitSetPresentationMode('inline'); } catch (e) {}
-            await new Promise(r => setTimeout(r, 300)); // let the mode change settle
-            return false;
-        })()
-        """
 
     private static let pipEnterScript = """
         // Candidate videos: must have data and be visible.
@@ -1228,24 +1224,20 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         video.disablePictureInPicture = false;
         video.removeAttribute('disablepictureinpicture');
         let lastError = '';
+        try {
+            if (video.webkitSupportsPresentationMode?.('picture-in-picture')) {
+                if (await setMode(video, 'picture-in-picture')) return 'entered';
+                lastError = 'the floating window did not open';
+            }
+        } catch (e) { lastError = e.message || String(e); }
         if (typeof video.requestPictureInPicture === 'function') {
             try {
                 await video.requestPictureInPicture();
-                return 'entered';
-            } catch (e) { lastError = e.message || String(e); }
-        } else {
-            lastError = 'requestPictureInPicture not available';
+                if (inPip(video)) return 'entered';
+                lastError += ' | requestPictureInPicture had no effect';
+            } catch (e) { lastError += ' | ' + (e.message || e); }
         }
-        try {
-            if (video.webkitSupportsPresentationMode
-                && video.webkitSupportsPresentationMode('picture-in-picture')) {
-                video.webkitSetPresentationMode('picture-in-picture');
-                window.webkit?.messageHandlers?.featherPiP?.postMessage('debug entered via webkit mode after: ' + lastError);
-                return 'entered';
-            }
-            lastError += ' | webkit PiP not supported';
-        } catch (e) { lastError += ' | ' + (e.message || e); }
-        return 'error:' + lastError;
+        return 'error:' + (lastError || 'Picture in Picture is not available');
         """
 
     // MARK: Video download and subtitles
@@ -1425,7 +1417,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
 
     private var restoringPictureInPicture = false
 
-    /// Called by PiPKeeper when an ad closed the floating window. The video may still be loading
+    /// Called by PiPKeeper when an ad or the next video closed the floating window. The video may still be loading
     /// its new source, so this tries once a second for up to 10 seconds.
     func restorePictureInPicture(in frame: WKFrameInfo, attempt: Int = 0) {
         guard attempt > 0 || !restoringPictureInPicture else { return }

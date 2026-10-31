@@ -27,30 +27,22 @@ enum MediaScripts {
         return setAttribute.call(this, name, value);
       };
 
-      let wanted = null, swappedAt = 0, reopenAfterSwap = false;
+      let wanted = null, swappedAt = 0;
       const post = m => window.webkit?.messageHandlers?.featherPiP?.postMessage(m);
+      // WebKit's presentation mode is the truth; pictureInPictureElement can go stale.
+      const inPip = v => 'webkitPresentationMode' in v
+        ? v.webkitPresentationMode === 'picture-in-picture' : document.pictureInPictureElement === v;
       const swapped = e => {
         swappedAt = Date.now();
-        if (wanted && e.target === wanted) {
-          post(`debug ${e.type}`);
-          reopenAfterSwap = true;
-        }
+        if (wanted && e.target === wanted) post(`debug ${e.type}`);
       };
       document.addEventListener('emptied', swapped, true);
       document.addEventListener('loadstart', swapped, true);
-      // When an ad starts or ends, YouTube swaps the video's source. macOS closes the floating
-      // window, but WebKit sends no event and still reports the video as in PiP. So once the
-      // new source plays, ask Feather to reset the video and reopen the window.
-      document.addEventListener('playing', e => {
-        if (!reopenAfterSwap || e.target !== wanted) return;
-        reopenAfterSwap = false;
-        post('restore');
-      }, true);
       const changed = e => {
         const v = e.target;
         if (!(v instanceof HTMLVideoElement)) return;
-        post(`debug ${e.type} mode=${v.webkitPresentationMode} wanted=${v === wanted} hadWanted=${!!wanted}`);
-        if (document.pictureInPictureElement === v || v.webkitPresentationMode === 'picture-in-picture') {
+        post(`debug ${e.type} mode=${v.webkitPresentationMode} wanted=${v === wanted}`);
+        if (inPip(v)) {
           wanted = v;
           return;
         }
@@ -61,7 +53,6 @@ enum MediaScripts {
         } else {
           post('left');
           wanted = null;
-          reopenAfterSwap = false;
         }
       };
       document.addEventListener('webkitpresentationmodechanged', changed, true);

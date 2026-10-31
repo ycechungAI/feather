@@ -48,11 +48,11 @@
   to the end. Hidden pages (a video floating in PiP over another app) no longer have their timers
   slowed to minutes, Feather retries reopening PiP for up to 10 seconds after an ad, and a tab
   with a playing or floating video never goes to sleep.
-- **Picture in Picture closed at every YouTube ad and wouldn't reopen until a reload.** When an ad
-  starts or ends, YouTube swaps the video's source; macOS closes the floating window, but WebKit
-  sends no event and still reports the video as in PiP. Feather now reopens PiP once the new source
-  plays, resetting the video first, and the PiP button no longer does nothing when a stuck video
-  or a silent page frame gets in the way.
+- **Picture in Picture closed when YouTube's next video started, and wouldn't reopen until a
+  reload.** The floating window closed, but the browser's standard PiP state kept saying the video
+  was still floating, so Feather didn't reopen it and the PiP button "opened" PiP without opening
+  anything. Feather now goes by WebKit's own PiP state, reopens the window for the next video, and
+  the PiP button works even when one of the page's frames never answers.
 - **Twitch showed "Error #3000" when an ad ended.** Twitch's player reports each ad to Amazon's ad
   servers and fails when it can't. Twitch may now reach them; they stay blocked on every other site.
 - **Restored windows put their tabs out of order.** Every tab after the first came back in reverse.
