@@ -488,14 +488,15 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
     ///   previous page (often its whole process) alive in memory.
     /// - Smaller audio buffers while video plays, and slower timers on hidden pages. Not the
     ///   "auto-increasing" kind, which stretches them to minutes and stalls video in PiP.
+    static let memoryPreferences: [(String, Bool)] = [
+        ("usesPageCache", false),
+        ("lowPowerVideoAudioBufferSizeEnabled", true),
+        ("hiddenPageDOMTimerThrottlingEnabled", true),
+        ("pageVisibilityBasedProcessSuppressionEnabled", true),
+    ]
+
     private static func applyMemoryPreferences(to preferences: WKPreferences) {
-        let values: [(String, Bool)] = [
-            ("usesPageCache", false),
-            ("lowPowerVideoAudioBufferSizeEnabled", true),
-            ("hiddenPageDOMTimerThrottlingEnabled", true),
-            ("pageVisibilityBasedProcessSuppressionEnabled", true),
-        ]
-        for (key, value) in values
+        for (key, value) in memoryPreferences
         where preferences.responds(to: NSSelectorFromString("_set" + key.prefix(1).uppercased() + key.dropFirst() + ":")) {
             preferences.setValue(value, forKey: key)
         }
@@ -601,7 +602,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         }
     }
 
-    private static let videoActiveScript = """
+    static let videoActiveScript = """
         !!document.pictureInPictureElement
             || [...document.querySelectorAll('video')].some(v => !v.paused
                 || v.webkitPresentationMode === 'picture-in-picture')
@@ -1168,7 +1169,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
     /// truth: the standard `document.pictureInPictureElement` can keep pointing at a video after
     /// its floating window closed (YouTube's next video), and `requestPictureInPicture()` then
     /// succeeds without opening anything.
-    private static let pipStateScript = """
+    static let pipStateScript = """
         const inPip = v => 'webkitPresentationMode' in v
             ? v.webkitPresentationMode === 'picture-in-picture' : document.pictureInPictureElement === v;
         const setMode = (v, mode) => new Promise(resolve => {
@@ -1181,7 +1182,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
 
     /// Reports whether this frame has a video in PiP, and how good its best candidate is
     /// (playing beats paused, bigger beats smaller).
-    private static let pipProbeScript = pipStateScript + """
+    static let pipProbeScript = pipStateScript + """
         const videos = [...document.querySelectorAll('video')];
         const active = videos.some(inPip);
         let score = 0;
@@ -1192,7 +1193,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         return JSON.stringify({active, score});
         """
 
-    private static let pipScript = pipStateScript + """
+    static let pipScript = pipStateScript + """
         const active = [...document.querySelectorAll('video')].find(inPip);
         if (active) {
             if ('webkitPresentationMode' in active) await setMode(active, 'inline');
@@ -1203,11 +1204,11 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
 
     /// Reopens the floating window after YouTube closed it (an ad or the next video); does
     /// nothing if it's open.
-    private static let pipRestoreScript = pipStateScript + """
+    static let pipRestoreScript = pipStateScript + """
         if ([...document.querySelectorAll('video')].some(inPip)) return 'entered';
         """ + pipEnterScript
 
-    private static let pipEnterScript = """
+    static let pipEnterScript = """
         // Candidate videos: must have data and be visible.
         let videos = [...document.querySelectorAll('video')]
             .filter(v => v.readyState > 0 && v.offsetWidth > 0 && v.offsetHeight > 0);
