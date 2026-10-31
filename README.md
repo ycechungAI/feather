@@ -19,7 +19,8 @@ Apple M4, macOS 27, October 2026. Full results and method:
 [docs/OPTIMIZATION.md](docs/OPTIMIZATION.md#feather-vs-safari-and-brave).
 
 ## What it does
-- **Ad & tracker blocking:** WebKit content rules compiled to native code, plus YouTube ad skipping.
+- **Ad & tracker blocking:** WebKit content rules compiled to native code. YouTube video ads are muted and
+  play to the end, so they don't interrupt the video or Picture in Picture.
 - **Low memory:** background tabs idle for 5 minutes go to sleep and free their memory. All hidden
   tabs sleep right away when the Mac runs low on memory. Going Back reloads the previous page
   instead of keeping it in memory.

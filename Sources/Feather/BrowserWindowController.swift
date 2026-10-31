@@ -486,13 +486,13 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
     /// WebKit's (non-public) memory and power preferences, each skipped if WebKit no longer has it.
     /// - No back/forward page cache: going Back reloads the page instead of keeping every
     ///   previous page (often its whole process) alive in memory.
-    /// - Smaller audio buffers while video plays, and slower timers on hidden pages.
+    /// - Smaller audio buffers while video plays, and slower timers on hidden pages. Not the
+    ///   "auto-increasing" kind, which stretches them to minutes and stalls video in PiP.
     private static func applyMemoryPreferences(to preferences: WKPreferences) {
         let values: [(String, Bool)] = [
             ("usesPageCache", false),
             ("lowPowerVideoAudioBufferSizeEnabled", true),
             ("hiddenPageDOMTimerThrottlingEnabled", true),
-            ("hiddenPageDOMTimerThrottlingAutoIncreases", true),
             ("pageVisibilityBasedProcessSuppressionEnabled", true),
         ]
         for (key, value) in values
@@ -588,13 +588,27 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         guard let webView, now.timeIntervalSince(lastActive) >= limit,
               webView.url != nil,
               webView.cameraCaptureState == .none, webView.microphoneCaptureState == .none else { return }
-        webView.requestMediaPlaybackState { [weak self] state in
-            guard state != .playing, let self, !(self.isSelected && self.window?.isKeyWindow == true) else { return }
-            self.sleep()
+        guard !isPlayingAudio else { return }
+        // WebKit's playback state misses a muted or briefly paused video (a YouTube ad swap),
+        // so also ask the page: a tab with a playing or floating (PiP) video stays awake.
+        webView.requestMediaPlaybackState { [weak self, weak webView] state in
+            guard state != .playing, let self, let webView else { return }
+            webView.evaluateJavaScript(Self.videoActiveScript) { [weak self] result, _ in
+                guard (result as? Bool) != true, let self,
+                      !(self.isSelected && self.window?.isKeyWindow == true) else { return }
+                self.sleep()
+            }
         }
     }
 
+    private static let videoActiveScript = """
+        !!document.pictureInPictureElement
+            || [...document.querySelectorAll('video')].some(v => !v.paused
+                || v.webkitPresentationMode === 'picture-in-picture')
+        """
+
     private func sleep() {
+        debugLog("tab sleeping \(webView?.url?.absoluteString ?? "-")")
         guard let webView else { return }
         sleepingState = webView.interactionState
         sleepingURL = webView.url
@@ -1383,7 +1397,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
     private var restoringPictureInPicture = false
 
     /// Called by PiPKeeper when an ad closed the floating window. The video may still be loading
-    /// its new source, so this tries a few times.
+    /// its new source, so this tries once a second for up to 10 seconds.
     func restorePictureInPicture(in frame: WKFrameInfo, attempt: Int = 0) {
         guard attempt > 0 || !restoringPictureInPicture else { return }
         restoringPictureInPicture = true
@@ -1391,9 +1405,9 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
             guard let self, let webView = self.webView else { self?.restoringPictureInPicture = false; return }
             webView.callAsyncJavaScript(Self.pipRestoreScript, arguments: [:], in: frame, in: .page) { [weak self] result in
                 guard let self else { return }
-                if case .success(let value as String) = result, value == "entered" || attempt >= 4 {
+                if case .success(let value as String) = result, value == "entered" || attempt >= 9 {
                     self.restoringPictureInPicture = false
-                } else if attempt >= 4 {
+                } else if attempt >= 9 {
                     self.restoringPictureInPicture = false
                 } else {
                     self.restorePictureInPicture(in: frame, attempt: attempt + 1)

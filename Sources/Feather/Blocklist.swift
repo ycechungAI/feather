@@ -48,7 +48,8 @@ enum Blocklist {
     ]
 
     /// YouTube serves video ads from its own domain, so network rules alone can't stop them.
-    /// This hides ad slots and fast-forwards/skip-clicks any video ad that still plays.
+    /// This hides ad slots and mutes video ads. The ads play to the end: skipping them made
+    /// YouTube interrupt playback (and close Picture in Picture) again and again.
     /// It polls once a second and watches only the player element, to stay cheap.
     static let youtubeScript = #"""
     (() => {
@@ -69,9 +70,6 @@ enum Blocklist {
         if (!video) return;
         if (player.classList.contains('ad-showing')) {
           if (!video.muted) { video.muted = true; mutedByUs = true; }
-          if (isFinite(video.duration) && video.duration > 0) video.currentTime = video.duration;
-          const skip = player.querySelector('.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern');
-          if (skip) skip.click();
         } else if (mutedByUs) {
           video.muted = false; mutedByUs = false;
         }

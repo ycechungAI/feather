@@ -43,6 +43,11 @@
 - **The release build is optimized for size** (`-Osize`, dead stripping): the binary is 12% smaller.
 
 ### Fixed
+- **YouTube stopped, or Picture in Picture closed, every few minutes.** Feather skipped YouTube ads
+  by jumping to their end, and YouTube answered by interrupting playback. Ads are now muted and play
+  to the end. Hidden pages (a video floating in PiP over another app) no longer have their timers
+  slowed to minutes, Feather retries reopening PiP for up to 10 seconds after an ad, and a tab
+  with a playing or floating video never goes to sleep.
 - **Twitch showed "Error #3000" when an ad ended.** Twitch's player reports each ad to Amazon's ad
   servers and fails when it can't. Twitch may now reach them; they stay blocked on every other site.
 - **Restored windows put their tabs out of order.** Every tab after the first came back in reverse.
