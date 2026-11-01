@@ -1,13 +1,13 @@
 # Feather Roadmap
 
-Current version: **0.2.0** (built; waiting for your check before it's called released). Version **0.4** is the last planned release for now.
+Current version: **0.2.0** (released 2026-11-01). Version **0.4** is the last planned release for now.
 
 Feather's goals don't change from version to version: very little memory and battery use, especially for
 video; safety on by default; and web standards kept current by the WebKit engine built into macOS.
 
 ---
 
-## v0.2 "Daily driver" (built)
+## v0.2 "Daily driver" (released)
 
 | # | Feature | What you get | Size |
 |---|---------|--------------|------|

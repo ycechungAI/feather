@@ -1,6 +1,7 @@
 # Changelog
 
-## Unreleased: memory and disk
+## 0.2.0 (2026-11-01)
+The first public release.
 
 ### Added
 - **214 tests (from 127),** now covering the address bar, tracking removal, HTTPS upgrades, what
@@ -31,6 +32,23 @@
   It refuses encrypted, DRM and DASH streams with a message that says why.
 - **Subtitles button:** turns the video's own subtitle tracks on or off, and loads `.srt` and `.vtt`
   files onto any video (View ▸ Load Subtitle File…).
+- **Find on page:** ⌘F, ⌘G / ⇧⌘G, Esc. (#1)
+- **Address bar suggestions** from history and bookmarks. Optional search-engine suggestions are off
+  by default. (#2)
+- **Reopen closed tab (⇧⌘T)**, up to 20 tabs with their back/forward history. (#3)
+- **Restore last session** on launch. Background tabs load only when clicked, and History ▸ Reopen
+  Last Session is there when automatic restore is off. (#3)
+- **Settings window (⌘,):**
+  - Search engine (5 presets or custom) and home page.
+  - Tab sleep timer.
+  - Shields, HTTPS-Only, suggestions and session restore.
+  - Sites with Shields off.
+  - A "Make Feather the Default Browser" button. (#4)
+- **Downloads window (⌥⌘L):** progress, cancel, Show in Finder, open, and a list of the last 50 downloads;
+  a toolbar button appears while downloading. Private-window downloads aren't saved to the list. (#5)
+- **Per-site Shields** from the toolbar shield button, covering subdomains. (#6)
+- **Tab sound indicator (🔊) and Mute Tab (⌃⌘M, 🔇),** also available to extensions. (#7)
+- **App icon and an About panel** showing the Feather, WebKit and macOS versions. (#9)
 
 ### Changed
 - **Web cache is capped at 500 MB** (Settings ▸ Web cache limit, 250 MB to 5 GB). Every 2 minutes
@@ -44,6 +62,9 @@
   Also smaller audio buffers during video and slower timers on hidden pages.
 - **The PiP button sits next to Home**, at the top left.
 - **The release build is optimized for size** (`-Osize`, dead stripping): the binary is 12% smaller.
+- **Builds:** they work with only the Command Line Tools (native SwiftPM build system, Swift Testing
+  instead of XCTest) and on ExFAT drives.
+- **Size:** the app binary is stripped, keeping the app at about 1 MB including its icon.
 
 ### Fixed
 - **Removing tracking parameters could change the rest of a link.** On a link with `utm_source`
@@ -69,31 +90,6 @@
   now keeps it allowed, and reopens the floating window if an ad still closes it.
 - **Clear History's "cookies and site data" signed you out of Google.** It now keeps the cookies of
   google.com, gmail.com and youtube.com (the `keepSignedIn` setting).
-
-## 0.2.0 (unreleased: built and tested; waiting for your hands-on check)
-
-### Added
-- **Find on page:** ⌘F, ⌘G / ⇧⌘G, Esc. (#1)
-- **Address bar suggestions** from history and bookmarks. Optional search-engine suggestions are off
-  by default. (#2)
-- **Reopen closed tab (⇧⌘T)**, up to 20 tabs with their back/forward history. (#3)
-- **Restore last session** on launch. Background tabs load only when clicked, and History ▸ Reopen
-  Last Session is there when automatic restore is off. (#3)
-- **Settings window (⌘,):**
-  - Search engine (5 presets or custom) and home page.
-  - Tab sleep timer.
-  - Shields, HTTPS-Only, suggestions and session restore.
-  - Sites with Shields off.
-  - A "Make Feather the Default Browser" button. (#4)
-- **Downloads window (⌥⌘L):** progress, cancel, Show in Finder, open, and a list of the last 50 downloads;
-  a toolbar button appears while downloading. Private-window downloads aren't saved to the list. (#5)
-- **Per-site Shields** from the toolbar shield button, covering subdomains. (#6)
-- **Tab sound indicator (🔊) and Mute Tab (⌃⌘M, 🔇),** also available to extensions. (#7)
-- **App icon and an About panel** showing the Feather, WebKit and macOS versions. (#9)
-- **Tests:** `scripts/test.sh` runs 83 tests, including new tests for suggestions, session restore,
-  Shields exceptions and search engines.
-
-### Fixed
 - **Picture in Picture was off again:** a later change set WebKit's PiP setting in a way that left it
   disabled. It's set through KVC again, verified with a headless test.
 - **Picture in Picture did nothing (button and extensions):** the App Sandbox blocked the system's
@@ -103,11 +99,6 @@
 - **Extensions that can't work in WebKit say so** instead of showing a blank popup. Firefox add-ons
   that need `webRequestBlocking` (like the full uBlock Origin) are flagged when you install them, when you
   click their button, and in Manage Extensions. Feather suggests uBlock Origin Lite instead.
-
-### Changed
-- **Builds:** they work with only the Command Line Tools (native SwiftPM build system, Swift Testing
-  instead of XCTest) and on ExFAT drives.
-- **Size:** the app binary is stripped, keeping the app at about 1 MB including its icon.
 
 ## 0.1.0 (2026-10-10)
 The first version.

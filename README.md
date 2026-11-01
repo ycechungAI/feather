@@ -152,6 +152,18 @@ No telemetry, no accounts, no background processes, no login items, and no netwo
 The one exception is search suggestions, which are off unless you turn them on in Settings.
 It runs only when you open it. All source code is in `Sources/Feather`.
 
+## Install
+Download `Feather-0.2.0.zip` from [Releases](https://github.com/ycechungAI/feather/releases), unzip it
+and move `Feather.app` to Applications. Feather needs macOS 15.4 or later.
+
+Feather isn't notarized by Apple yet (planned for v0.4), so macOS blocks it the first time. To open it,
+either right-click `Feather.app` and choose **Open**, or go to **System Settings ▸ Privacy & Security**
+and click **Open Anyway**. You can also run:
+
+    xattr -dr com.apple.quarantine /Applications/Feather.app
+
+You can check the download against `Feather-0.2.0.zip.sha256` on the release page.
+
 ## Build & run
     scripts/build-app.sh              # creates build/Feather.app
     scripts/build-app.sh --install    # also copies it to /Applications
