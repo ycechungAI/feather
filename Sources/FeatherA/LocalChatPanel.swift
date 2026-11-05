@@ -84,6 +84,7 @@ final class LocalChatView: NSView {
         chatScrollView.translatesAutoresizingMaskIntoConstraints = false
         chatScrollView.hasVerticalScroller = true
         chatScrollView.hasHorizontalScroller = false
+        chatScrollView.scrollerStyle = .legacy
         chatScrollView.borderType = .bezelBorder
         chatScrollView.documentView = chatTextView
         chatTextView.frame = NSRect(x: 0, y: 0, width: 400, height: 200)
@@ -148,6 +149,7 @@ final class LocalChatView: NSView {
         logsContainer.translatesAutoresizingMaskIntoConstraints = false
         logsScrollView.translatesAutoresizingMaskIntoConstraints = false
         logsScrollView.hasVerticalScroller = true
+        logsScrollView.scrollerStyle = .legacy
         logsScrollView.borderType = .bezelBorder
         logsScrollView.documentView = logsTextView
         logsTextView.frame = NSRect(x: 0, y: 0, width: 400, height: 200)
@@ -174,6 +176,7 @@ final class LocalChatView: NSView {
         tasksContainer.translatesAutoresizingMaskIntoConstraints = false
         tasksScrollView.translatesAutoresizingMaskIntoConstraints = false
         tasksScrollView.hasVerticalScroller = true
+        tasksScrollView.scrollerStyle = .legacy
         tasksScrollView.borderType = .bezelBorder
         tasksScrollView.documentView = tasksTextView
         tasksTextView.frame = NSRect(x: 0, y: 0, width: 400, height: 200)
