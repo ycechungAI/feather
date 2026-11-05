@@ -255,7 +255,7 @@ final class LocalChatView: NSView {
         taskFilterPicker.menu?.appearance = NSAppearance(named: .darkAqua)
         // buttons created in setupTaskButtons() called from configure
         NSLayoutConstraint.activate([
-            taskFilterPicker.topAnchor.constraint(equalTo: tasksContainer.topAnchor, constant: 4),
+            taskFilterPicker.topAnchor.constraint(equalTo: tasksContainer.topAnchor, constant: 2),
             taskFilterPicker.leadingAnchor.constraint(equalTo: tasksContainer.leadingAnchor, constant: 8),
             taskFilterPicker.widthAnchor.constraint(equalTo: tasksContainer.widthAnchor, multiplier: 0.5, constant: -12),
             taskFilterPicker.heightAnchor.constraint(equalToConstant: 22),
@@ -353,7 +353,7 @@ final class LocalChatView: NSView {
             headerView.topAnchor.constraint(equalTo: topAnchor),
             headerView.leadingAnchor.constraint(equalTo: leadingAnchor),
             headerView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            headerView.heightAnchor.constraint(equalToConstant: 44),
+            headerView.heightAnchor.constraint(equalToConstant: 30),
 
             iconView.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: 8),
             iconView.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
@@ -1094,6 +1094,9 @@ final class LocalChatView: NSView {
         lines.append("Next run: \(task["next_run"] as? String ?? "?")")
         lines.append("Model: \(task["model"] as? String ?? "?")")
         tasksTextView.string = lines.joined(separator: "\n")
+        let clip = tasksScrollView.contentView
+        clip.scroll(to: NSPoint(x: 0, y: 0))
+        tasksScrollView.reflectScrolledClipView(clip)
     }
 
     @objc private func verifyTaskText(_ sender: Any?) {
