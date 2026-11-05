@@ -58,6 +58,7 @@ final class LocalChatView: NSView {
         tabControl.target = self
         tabControl.action = #selector(tabChanged(_:))
         tabControl.segmentStyle = .texturedSquare
+        tabControl.appearance = NSAppearance(named: .darkAqua)
 
         headerView.addSubview(iconView)
         headerView.addSubview(nameLabel)
