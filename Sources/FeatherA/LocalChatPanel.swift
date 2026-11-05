@@ -60,7 +60,7 @@ final class LocalChatView: NSView {
         super.init(frame: frameRect)
         translatesAutoresizingMaskIntoConstraints = false
         wantsLayer = true
-        layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        layer?.backgroundColor = NSColor(white: 0.15, alpha: 1).cgColor
 
         // Header
         headerView.translatesAutoresizingMaskIntoConstraints = false
@@ -229,6 +229,7 @@ final class LocalChatView: NSView {
         taskFilterPicker.action = #selector(taskFilterChanged(_:))
         taskFilterPicker.font = .systemFont(ofSize: 10)
         taskFilterPicker.appearance = NSAppearance(named: .darkAqua)
+        taskFilterPicker.menu?.appearance = NSAppearance(named: .darkAqua)
         // buttons created in setupTaskButtons() called from configure
         NSLayoutConstraint.activate([
             taskFilterPicker.topAnchor.constraint(equalTo: tasksContainer.topAnchor, constant: 4),
@@ -278,11 +279,13 @@ final class LocalChatView: NSView {
         taskPicker.action = #selector(taskPicked(_:))
         taskPicker.font = .systemFont(ofSize: 10)
         taskPicker.appearance = NSAppearance(named: .darkAqua)
+        taskPicker.menu?.appearance = NSAppearance(named: .darkAqua)
         runPicker.translatesAutoresizingMaskIntoConstraints = false
         runPicker.target = self
         runPicker.action = #selector(runPicked(_:))
         runPicker.font = .systemFont(ofSize: 10)
         runPicker.appearance = NSAppearance(named: .darkAqua)
+        runPicker.menu?.appearance = NSAppearance(named: .darkAqua)
         resultsContainer.addSubview(taskPicker)
         resultsContainer.addSubview(runPicker)
         resultsContainer.addSubview(resultsScrollView)
@@ -673,6 +676,7 @@ final class LocalChatView: NSView {
                 self.buildTaskRows(tasks: tasks)
                 self.taskFilterPicker.removeAllItems()
                 self.taskFilterPicker.addItem(withTitle: "All")
+                self.taskFilterPicker.menu?.appearance = NSAppearance(named: .darkAqua)
                 for t in tasks {
                     self.taskFilterPicker.addItem(withTitle: t["name"] as? String ?? "?")
                 }
@@ -893,6 +897,7 @@ final class LocalChatView: NSView {
                 guard let self else { return }
                 self.currentRuns = runs
                 self.runPicker.removeAllItems()
+                self.runPicker.menu?.appearance = NSAppearance(named: .darkAqua)
                 for r in runs {
                     let started = r["started_at"] as? String ?? "?"
                     let status = r["status"] as? String ?? "?"
@@ -941,6 +946,7 @@ final class LocalChatView: NSView {
                 for (i, t) in tasks.enumerated() {
                     self.taskPicker.addItem(withTitle: "\(i+1). \(t["name"] as? String ?? "?")")
                 }
+                self.taskPicker.menu?.appearance = NSAppearance(named: .darkAqua)
                 if let tid = self.currentResultTaskId, let idx = tasks.firstIndex(where: { ($0["id"] as? String) == tid }) {
                     self.taskPicker.selectItem(at: idx)
                     self.loadRunsForTask(taskId: tid)
