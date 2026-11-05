@@ -23,6 +23,9 @@ final class LocalChatView: NSView {
     private let resultsContainer = NSView()
     private let resultsScrollView = NSScrollView()
     private let resultsTextView = NSTextView()
+    private let resultsPicker = NSPopUpButton()
+    private var currentResultTaskId: String?
+    private var currentRuns: [[String: Any]] = []
     private let taskButtonBar = NSStackView()
     private let taskBottomBar = NSStackView()
     private var taskButtons: [NSButton] = []
@@ -240,9 +243,17 @@ final class LocalChatView: NSView {
         if let container = resultsTextView.textContainer {
             container.widthTracksTextView = true
         }
+        resultsPicker.translatesAutoresizingMaskIntoConstraints = false
+        resultsPicker.target = self
+        resultsPicker.action = #selector(resultPicked(_:))
+        resultsContainer.addSubview(resultsPicker)
         resultsContainer.addSubview(resultsScrollView)
         NSLayoutConstraint.activate([
-            resultsScrollView.topAnchor.constraint(equalTo: resultsContainer.topAnchor),
+            resultsPicker.topAnchor.constraint(equalTo: resultsContainer.topAnchor, constant: 4),
+            resultsPicker.leadingAnchor.constraint(equalTo: resultsContainer.leadingAnchor, constant: 8),
+            resultsPicker.trailingAnchor.constraint(equalTo: resultsContainer.trailingAnchor, constant: -8),
+            resultsPicker.heightAnchor.constraint(equalToConstant: 24),
+            resultsScrollView.topAnchor.constraint(equalTo: resultsPicker.bottomAnchor, constant: 4),
             resultsScrollView.leadingAnchor.constraint(equalTo: resultsContainer.leadingAnchor),
             resultsScrollView.trailingAnchor.constraint(equalTo: resultsContainer.trailingAnchor),
             resultsScrollView.bottomAnchor.constraint(equalTo: resultsContainer.bottomAnchor),
@@ -613,11 +624,7 @@ final class LocalChatView: NSView {
             return b
         }
         taskButtons = topButtons
-        let width = self.bounds.width > 0 ? self.bounds.width : 380
-        let perRow: Int
-        if width >= 700 { perRow = 4 }
-        else if width >= 380 { perRow = 2 }
-        else { perRow = 2 }
+        let perRow: Int = 6
         var row: [NSButton] = []
         var rows: [[NSButton]] = []
         for b in topButtons {
@@ -638,7 +645,7 @@ final class LocalChatView: NSView {
             b.controlSize = .small
             taskBottomBar.addArrangedSubview(b)
         }
-        lastButtonWidth = width
+        lastButtonWidth = self.bounds.width
     }
 
     override func layout() {
@@ -648,21 +655,44 @@ final class LocalChatView: NSView {
         }
     }
 
+    @objc private func resultPicked(_ sender: NSPopUpButton) {
+        let idx = sender.indexOfSelectedItem
+        guard idx >= 0, idx < currentRuns.count else { return }
+        guard let runId = currentRuns[idx]["id"] as? Int else { return }
+        loadResult(runId: runId)
+    }
+
     private func fetchLatestResult(taskId: String) {
+        currentResultTaskId = taskId
         guard let url = URL(string: "http://127.0.0.1:8787/api/tasks/\(taskId)/runs") else { return }
         URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
-            guard let data, let runs = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
-                  let latest = runs.first, let runId = latest["id"] as? Int else { return }
-            guard let reportURL = URL(string: "http://127.0.0.1:8787/api/runs/\(runId)/report") else { return }
-            URLSession.shared.dataTask(with: reportURL) { [weak self] data, _, _ in
-                guard let data, let text = String(data: data, encoding: .utf8) else { return }
-                DispatchQueue.main.async {
-                    guard let self else { return }
-                    self.resultsTextView.string = text
-                    self.tabControl.selectedSegment = 3
-                    self.tabChanged(self.tabControl)
+            guard let data, let runs = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.currentRuns = runs
+                self.resultsPicker.removeAllItems()
+                for r in runs {
+                    let started = r["started_at"] as? String ?? "?"
+                    let status = r["status"] as? String ?? "?"
+                    self.resultsPicker.addItem(withTitle: "\(started) [\(status)]")
                 }
-            }.resume()
+                if let latest = runs.first, let runId = latest["id"] as? Int {
+                    self.resultsPicker.selectItem(at: 0)
+                    self.loadResult(runId: runId)
+                }
+                self.tabControl.selectedSegment = 3
+                self.tabChanged(self.tabControl)
+            }
+        }.resume()
+    }
+
+    private func loadResult(runId: Int) {
+        guard let url = URL(string: "http://127.0.0.1:8787/api/runs/\(runId)/report") else { return }
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+            guard let data, let text = String(data: data, encoding: .utf8) else { return }
+            DispatchQueue.main.async {
+                self?.resultsTextView.string = text
+            }
         }.resume()
     }
 
