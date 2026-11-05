@@ -188,21 +188,10 @@ final class LocalChatView: NSView {
         tasksContainer.addSubview(tasksScrollView)
         tasksContainer.addSubview(taskButtonBar)
         taskButtonBar.translatesAutoresizingMaskIntoConstraints = false
-        taskButtonBar.orientation = .horizontal
-        taskButtonBar.spacing = 6
-        taskButtonBar.alignment = .centerY
-        for (title, action) in [("Add tasks", #selector(newTaskClicked(_:))),
-                                 ("Delete", #selector(deleteTaskClicked(_:))),
-                                 ("Run", #selector(runTaskClicked(_:))),
-                                 ("Save", #selector(saveTasksClicked(_:))),
-                                 ("Restore", #selector(restoreTasksClicked(_:))),
-                                 ("Refresh", #selector(refreshTasksClicked(_:)))] {
-            let b = NSButton(title: title, target: self, action: action)
-            b.bezelStyle = .rounded
-            b.controlSize = .small
-            taskButtons.append(b)
-            taskButtonBar.addArrangedSubview(b)
-        }
+        taskButtonBar.orientation = .vertical
+        taskButtonBar.spacing = 4
+        taskButtonBar.alignment = .leading
+        // buttons created in setupTaskButtons() called from configure
         NSLayoutConstraint.activate([
             taskButtonBar.topAnchor.constraint(equalTo: tasksContainer.topAnchor, constant: 4),
             taskButtonBar.leadingAnchor.constraint(equalTo: tasksContainer.leadingAnchor, constant: 8),
@@ -276,6 +265,7 @@ final class LocalChatView: NSView {
         render()
         appendLog("Panel opened. Page text: \(pageText.count) chars.")
         setupHandle()
+        setupTaskButtons()
     }
 
     private func setupHandle() {
@@ -537,6 +527,55 @@ final class LocalChatView: NSView {
             }.resume()
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.fetchTasks() }
+    }
+
+    private func setupTaskButtons() {
+        // clear
+        for v in taskButtonBar.arrangedSubviews { taskButtonBar.removeArrangedSubview(v); v.removeFromSuperview() }
+        taskButtons.removeAll()
+        let defs: [(String?, String?, Selector)] = [("Add tasks", nil, #selector(newTaskClicked(_:))),
+                                         ("Delete", nil, #selector(deleteTaskClicked(_:))),
+                                         ("Run", nil, #selector(runTaskClicked(_:))),
+                                         ("Save", nil, #selector(saveTasksClicked(_:))),
+                                         ("Restore", nil, #selector(restoreTasksClicked(_:))),
+                                         (nil, "arrow.clockwise", #selector(refreshTasksClicked(_:)))]
+        let buttons = defs.map { (title, symbol, action) -> NSButton in
+            let b: NSButton
+            if let symbol = symbol {
+                let img = NSImage(systemSymbolName: symbol, accessibilityDescription: "Refresh")
+                b = NSButton(image: img ?? NSImage(), target: self, action: action)
+            } else {
+                b = NSButton(title: title ?? "", target: self, action: action)
+            }
+            b.bezelStyle = .rounded
+            b.controlSize = .small
+            return b
+        }
+        taskButtons = buttons
+        let narrow = (panelPosition == "left" || panelPosition == "right")
+        if narrow {
+            // 2-3 buttons per row, 2-3 rows
+            var row: [NSButton] = []
+            var rows: [[NSButton]] = []
+            for b in buttons {
+                row.append(b)
+                if row.count >= 3 { rows.append(row); row = [] }
+            }
+            if !row.isEmpty { rows.append(row) }
+            for r in rows {
+                let h = NSStackView(views: r)
+                h.orientation = .horizontal
+                h.spacing = 4
+                h.alignment = .centerY
+                taskButtonBar.addArrangedSubview(h)
+            }
+        } else {
+            let h = NSStackView(views: buttons)
+            h.orientation = .horizontal
+            h.spacing = 4
+            h.alignment = .centerY
+            taskButtonBar.addArrangedSubview(h)
+        }
     }
 
     private func answer(question: String) async {
