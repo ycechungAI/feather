@@ -596,7 +596,7 @@ final class LocalChatView: NSView {
             row.alignment = .centerY
             let label = NSTextField(labelWithString: String(format: "%2d  %@ %@   %@ · %@ · %@", i+1, enabled ? "●" : "○", name, sched, status, next))
             label.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
-            if panelPosition == "bottom" {
+            if self.panelPosition == "bottom" {
                 label.lineBreakMode = .byWordWrapping
                 label.maximumNumberOfLines = 0
             } else {
