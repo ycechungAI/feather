@@ -36,9 +36,6 @@ final class LocalChatView: NSView {
     private let taskButtonBar = NSStackView()
     private let taskBottomBar = NSStackView()
     private let taskFilterPicker = NSPopUpButton()
-    private let modelPicker = NSPopUpButton()
-    private var availableModels: [String] = []
-    private var selectedRunModel: String? = nil
     private var taskButtons: [NSButton] = []
     private var currentTasks: [[String: Any]] = []
     private let chatScrollView = NSScrollView()
@@ -213,7 +210,6 @@ final class LocalChatView: NSView {
         tasksContainer.addSubview(taskRowsStack)
         tasksContainer.addSubview(tasksScrollView)
         tasksContainer.addSubview(taskButtonBar)
-        tasksContainer.addSubview(modelPicker)
         tasksContainer.addSubview(taskBottomBar)
         tasksContainer.addSubview(taskFilterPicker)
         taskButtonBar.translatesAutoresizingMaskIntoConstraints = false
@@ -233,21 +229,12 @@ final class LocalChatView: NSView {
         taskFilterPicker.action = #selector(taskFilterChanged(_:))
         taskFilterPicker.font = .systemFont(ofSize: 10)
         taskFilterPicker.appearance = NSAppearance(named: .darkAqua)
-        modelPicker.translatesAutoresizingMaskIntoConstraints = false
-        modelPicker.target = self
-        modelPicker.action = #selector(modelPicked(_:))
-        modelPicker.font = .systemFont(ofSize: 10)
-        modelPicker.appearance = NSAppearance(named: .darkAqua)
         // buttons created in setupTaskButtons() called from configure
         NSLayoutConstraint.activate([
             taskFilterPicker.topAnchor.constraint(equalTo: tasksContainer.topAnchor, constant: 4),
             taskFilterPicker.leadingAnchor.constraint(equalTo: tasksContainer.leadingAnchor, constant: 8),
             taskFilterPicker.widthAnchor.constraint(equalTo: tasksContainer.widthAnchor, multiplier: 0.5, constant: -12),
             taskFilterPicker.heightAnchor.constraint(equalToConstant: 22),
-            modelPicker.topAnchor.constraint(equalTo: tasksContainer.topAnchor, constant: 4),
-            modelPicker.leadingAnchor.constraint(equalTo: taskFilterPicker.trailingAnchor, constant: 8),
-            modelPicker.trailingAnchor.constraint(equalTo: tasksContainer.trailingAnchor, constant: -8),
-            modelPicker.heightAnchor.constraint(equalToConstant: 22),
             taskRowsStack.topAnchor.constraint(equalTo: taskFilterPicker.bottomAnchor, constant: 4),
             taskRowsStack.leadingAnchor.constraint(equalTo: tasksContainer.leadingAnchor, constant: 8),
             taskRowsStack.trailingAnchor.constraint(equalTo: tasksContainer.trailingAnchor, constant: -8),
@@ -565,10 +552,6 @@ final class LocalChatView: NSView {
             let statusLabel = NSTextField(labelWithString: status)
             statusLabel.font = .systemFont(ofSize: 9)
             statusLabel.textColor = .secondaryLabelColor
-            let runBtn = NSButton(title: "Run", target: self, action: #selector(runTaskByIndex(_:)))
-            runBtn.bezelStyle = .recessed
-            runBtn.controlSize = .mini
-            runBtn.tag = i
             let editBtn = NSButton(title: "Edit", target: self, action: #selector(editTaskByIndex(_:)))
             editBtn.bezelStyle = .recessed
             editBtn.controlSize = .mini
@@ -577,7 +560,6 @@ final class LocalChatView: NSView {
             row.addArrangedSubview(NSView()) // spacer
             row.addArrangedSubview(statusLabel)
             row.addArrangedSubview(editBtn)
-            row.addArrangedSubview(runBtn)
             taskRowsStack.addArrangedSubview(row)
         }
     }
@@ -696,7 +678,6 @@ final class LocalChatView: NSView {
                 }
                 self.taskFilterPicker.selectItem(at: 0)
                 self.tasksTextView.string = lines.joined(separator: "\n")
-                self.fetchModels()
             }
         }.resume()
     }
@@ -770,22 +751,6 @@ final class LocalChatView: NSView {
                   n >= 1, n <= self.currentTasks.count, n <= 50 else { return }
             let task = self.currentTasks[n-1]
             guard let taskId = task["id"] as? String else { return }
-            guard let filename = task["filename"] as? String else { return }
-            // apply selected model to task file if changed
-            if let model = self.selectedRunModel {
-                self.updateTaskModel(filename: filename, model: model) {
-                    guard let url = URL(string: "http://127.0.0.1:8787/api/tasks/\(taskId)/run") else { return }
-                    var req = URLRequest(url: url)
-                    req.httpMethod = "POST"
-                    URLSession.shared.dataTask(with: req) { _, _, _ in
-                        DispatchQueue.main.async {
-                            self.fetchTasks()
-                            self.pollResult(taskId: taskId, attempts: 0)
-                        }
-                    }.resume()
-                }
-                return
-            }
             guard let url = URL(string: "http://127.0.0.1:8787/api/tasks/\(taskId)/run") else { return }
             var req = URLRequest(url: url)
             req.httpMethod = "POST"
@@ -793,6 +758,17 @@ final class LocalChatView: NSView {
                 DispatchQueue.main.async { self.fetchTasks() }
             }.resume()
         }
+    }
+
+    @objc private func runAllTasksClicked(_ sender: Any?) {
+        for task in currentTasks {
+            guard let taskId = task["id"] as? String else { continue }
+            guard let url = URL(string: "http://127.0.0.1:8787/api/tasks/\(taskId)/run") else { continue }
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            URLSession.shared.dataTask(with: req) { _, _, _ in }.resume()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.fetchTasks() }
     }
 
     @objc private func saveTasksClicked(_ sender: Any?) {
@@ -845,6 +821,7 @@ final class LocalChatView: NSView {
         let topDefs: [(String?, String?, Selector)] = [("Add tasks", nil, #selector(newTaskClicked(_:))),
                                          ("Delete", nil, #selector(deleteTaskClicked(_:))),
                                          ("Run", nil, #selector(runTaskClicked(_:))),
+                                         ("Run All", nil, #selector(runAllTasksClicked(_:))),
                                          (nil, "arrow.clockwise", #selector(refreshTasksClicked(_:)))]
         let bottomDefs: [(String?, Selector)] = [("Save", #selector(saveTasksClicked(_:))),
                                                  ("Restore", #selector(restoreTasksClicked(_:)))]
@@ -1025,63 +1002,6 @@ final class LocalChatView: NSView {
         }.resume()
     }
 
-    private func fetchModels() {
-        guard let url = URL(string: "http://127.0.0.1:11434/api/tags") else { return }
-        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
-            guard let data, let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let models = obj["models"] as? [[String: Any]] else { return }
-            let names = models.compactMap { $0["name"] as? String }
-            DispatchQueue.main.async {
-                guard let self else { return }
-                self.availableModels = names
-                self.modelPicker.removeAllItems()
-                self.modelPicker.addItems(withTitles: names)
-                if let sel = self.selectedRunModel, let idx = names.firstIndex(of: sel) {
-                    self.modelPicker.selectItem(at: idx)
-                } else if let idx = names.firstIndex(of: "granite4:3b") {
-                    self.modelPicker.selectItem(at: idx)
-                    self.selectedRunModel = "granite4:3b"
-                } else if !names.isEmpty {
-                    self.modelPicker.selectItem(at: 0)
-                    self.selectedRunModel = names.first
-                }
-            }
-        }.resume()
-    }
-
-    @objc private func modelPicked(_ sender: NSPopUpButton) {
-        selectedRunModel = sender.titleOfSelectedItem
-    }
-
-    private func updateTaskModel(filename: String, model: String, completion: @escaping () -> Void) {
-        guard let url = URL(string: "http://127.0.0.1:8787/api/tasks/file/\(filename)") else { completion(); return }
-        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
-            guard let data, let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let content = obj["content"] as? String else { completion(); return }
-            // replace model line in frontmatter
-            var newContent = content
-            if let range = newContent.range(of: "model:", options: .caseInsensitive) {
-                // find end of line
-                let lineStart = newContent[..<range.lowerBound].lastIndex(of: "\n") ?? newContent.startIndex
-                let lineEnd = newContent[range.upperBound...].firstIndex(of: "\n") ?? newContent.endIndex
-                newContent.replaceSubrange(lineStart...lineEnd, with: "\nmodel: \"\(model)\"")
-            } else {
-                // insert model after first ---
-                if let r = newContent.range(of: "---\n") {
-                    newContent.insert(contentsOf: "model: \"\(model)\"\n", at: r.upperBound)
-                }
-            }
-            guard let createURL = URL(string: "http://127.0.0.1:8787/api/tasks/file/\(filename)") else { completion(); return }
-            var req = URLRequest(url: createURL)
-            req.httpMethod = "PUT"
-            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            req.httpBody = try? JSONSerialization.data(withJSONObject: ["content": newContent])
-            URLSession.shared.dataTask(with: req) { _, _, _ in
-                DispatchQueue.main.async { completion() }
-            }.resume()
-        }.resume()
-    }
-
     @objc private func taskFilterChanged(_ sender: NSPopUpButton) {
         let idx = sender.indexOfSelectedItem
         if idx <= 0 {
@@ -1090,7 +1010,6 @@ final class LocalChatView: NSView {
         }
         let task = currentTasks[idx - 1]
         guard let taskId = task["id"] as? String else { return }
-        // show details
         var lines: [String] = []
         lines.append("Task: \(task["name"] as? String ?? "?")")
         lines.append("ID: \(taskId)")
@@ -1105,7 +1024,6 @@ final class LocalChatView: NSView {
     @objc private func verifyTaskText(_ sender: Any?) {
         guard let tv = pendingEditTextView else { return }
         let text = tv.string
-        // deterministic format check
         let ok = text.contains("---") && text.contains("id:") && text.contains("name:") && text.contains("schedule:") && text.split(separator: "\n").count > 6
         if ok {
             pendingEditSaveButton?.isHidden = false
@@ -1126,7 +1044,6 @@ final class LocalChatView: NSView {
         URLSession.shared.dataTask(with: req) { _, _, _ in
             DispatchQueue.main.async { self.fetchTasks() }
         }.resume()
-        // close sheet
         if let window = self.window, let sheet = window.attachedSheet {
             window.endSheet(sheet)
         }
