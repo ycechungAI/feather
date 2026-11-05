@@ -28,9 +28,20 @@ Feather doesn't copy noskill's, sched's or orcastrator's code. It calls the serv
 | Ollama | 11434 | page Q&A with a 1B model | `POST /api/chat`, `GET /api/tags` |
 | noskill agent | 11435 | skills, jobs, status, events | `POST /v1/chat/completions`, `POST /noskill/v1/jobs`, `POST /noskill/v1/jobs/draft`, `GET /noskill/v1/status`, `GET /noskill/v1/events` |
 | sched (tasks) | 8787 | scheduled tasks | `GET/POST /api/tasks`, `POST /api/tasks/draft`, `POST /api/tasks/{id}/run`, `GET /api/runs/{id}/report` |
-| orcastrator (research) | 8400 | search and research reports | routes not yet checked; check before use |
+| research | macOS-native (see below) | search and research reports | chosen later; orcastrator is not used on macOS |
+
+Routes are not hard-coded. They live in a user-editable file, `~/Library/Application Support/Feather/services.json`,
+with the defaults above. When a service changes its routes, the user edits that file; Feather doesn't need a new build.
 
 Rules: only `localhost`; if a service isn't running, Feather shows a clear message and starts nothing itself.
+
+Research on macOS should use what macOS already provides, not orcastrator. Candidates to choose from:
+- Apple's on-device Foundation Models framework (`SystemLanguageModel`, macOS 26 or later with Apple Intelligence on).
+  Its API hasn't been checked on this Mac yet.
+- Spotlight (`NSMetadataQuery`) to search files and saved pages on the Mac.
+- Apple's Natural Language framework for summaries and keywords, without a model.
+
+Web search itself still needs a source; this is an open choice.
 Feather's new code is the browser side: the panel, the page text, and the forms. The services do the work.
 
 ## Features
