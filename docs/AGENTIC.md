@@ -55,6 +55,16 @@ Feather's new code is the browser side: the panel, the page text, and the forms.
   2. **Integrated:** Feather downloads and updates Ollama itself, into `~/Library/Application Support/Feather/`.
   Both work the same way once the server answers on `127.0.0.1:11434`.
 
+## Design direction (decided): Zen-style
+
+The UI follows Zen Browser's approach: a calm, minimal window that gets out of the way.
+- Vertical tab sidebar (collapsible), with pinned tabs and folders.
+- Workspaces: separate tab sets for different work (for example research, coding, personal).
+- Compact toolbar; the page gets most of the window.
+- Keyboard-first: every action the assistant offers has a shortcut.
+- The assistant lives in a side panel, not a popup, and it can be hidden.
+- Split view and page preview are later steps, after the Q&A panel works.
+
 ## Features
 
 Must have:
