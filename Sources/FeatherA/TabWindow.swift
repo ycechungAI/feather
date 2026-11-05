@@ -10,6 +10,7 @@ final class TabWindow: NSWindowController, NSWindowDelegate, NSMenuItemValidatio
     private(set) var model = TabStripModel()
     private var controllers: [UUID: BrowserWindowController] = [:]
     let strip = TabStripView()
+    private let aiStatusLabel = NSTextField(labelWithString: "")
     /// One bookmark bar per window (not per tab), always shown under the tab strip.
     private let bookmarkBar = BookmarkBar()
     private let slot = NSView()
@@ -43,11 +44,21 @@ final class TabWindow: NSWindowController, NSWindowDelegate, NSMenuItemValidatio
         root.addSubview(strip)
         root.addSubview(bookmarkBar)
         root.addSubview(slot)
+
+        let config = ServicesConfig.load()
+        aiStatusLabel.stringValue = "AI: \(config.answerModel) · \(config.routerModel)"
+        aiStatusLabel.font = .systemFont(ofSize: 10)
+        aiStatusLabel.textColor = .secondaryLabelColor
+        aiStatusLabel.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(aiStatusLabel)
+
         NSLayoutConstraint.activate([
             strip.topAnchor.constraint(equalTo: root.topAnchor),
             strip.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            strip.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            strip.trailingAnchor.constraint(equalTo: aiStatusLabel.leadingAnchor, constant: -8),
             strip.heightAnchor.constraint(equalToConstant: TabStripView.height),
+            aiStatusLabel.centerYAnchor.constraint(equalTo: strip.centerYAnchor),
+            aiStatusLabel.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -12),
             bookmarkBar.topAnchor.constraint(equalTo: strip.bottomAnchor),
             bookmarkBar.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             bookmarkBar.trailingAnchor.constraint(equalTo: root.trailingAnchor),
