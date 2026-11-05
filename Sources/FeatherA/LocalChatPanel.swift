@@ -1,40 +1,32 @@
 import AppKit
 import WebKit
 
-/// The local model's chat side panel. Opens docked to the side of the browser window as a chat
-/// window with a history and an input field, instead of the old alert popup. Opened by the toolbar's
-/// Ask AI button via LocalModelPrompt.ask; answers are routed by the small router and run on Ollama.
+/// The chat view shown in the browser window's side panel (dockable left/right/bottom via Settings).
+/// Embedded in BrowserWindowController's content area instead of a floating popup.
 @MainActor
-final class LocalChatPanel: NSPanel {
-    static let shared = LocalChatPanel()
-
-    private weak var ownerWindow: NSWindow?
+final class LocalChatView: NSView {
     private var pageText = ""
     private var history: [String] = []
 
     private let chatScrollView = NSScrollView()
     private let chatTextView = NSTextView()
-    private let chatContainer = NSView()
     private let inputRow = NSView()
     private let inputStack = NSStackView()
     private let inputField = NSTextField()
     private let sendButton = NSButton()
     private let closeButton = NSButton()
 
-    override init(contentRect: NSRect, styleMask: NSWindow.StyleMask, backing: NSWindow.BackingStoreType, defer: Bool) {
-        super.init(contentRect: contentRect, styleMask: styleMask, backing: backing, defer: true)
-        level = .modalPanel
-        isMovableByWindowBackground = true
-        titlebarAppearsTransparent = true
-        titleVisibility = .hidden
-        hasShadow = true
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        backgroundColor = .windowBackgroundColor
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        translatesAutoresizingMaskIntoConstraints = false
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
 
         chatScrollView.translatesAutoresizingMaskIntoConstraints = false
         chatScrollView.hasVerticalScroller = true
         chatScrollView.hasHorizontalScroller = false
         chatScrollView.documentView = chatTextView
+        chatScrollView.borderType = .bezelBorder
 
         chatTextView.translatesAutoresizingMaskIntoConstraints = false
         chatTextView.isEditable = false
@@ -43,74 +35,56 @@ final class LocalChatPanel: NSPanel {
 
         inputRow.translatesAutoresizingMaskIntoConstraints = false
         inputRow.heightAnchor.constraint(equalToConstant: 44).isActive = true
+
         inputStack.translatesAutoresizingMaskIntoConstraints = false
         inputStack.orientation = .horizontal
         inputStack.spacing = 6
-        inputStack.addArrangedSubview(inputField)
-        inputStack.addArrangedSubview(sendButton)
-        inputStack.addArrangedSubview(closeButton)
 
         inputField.translatesAutoresizingMaskIntoConstraints = false
         inputField.placeholderString = "Ask about this page"
         inputField.heightAnchor.constraint(equalToConstant: 30).isActive = true
-        inputField.widthAnchor.constraint(lessThanOrEqualToConstant: 220).isActive = true
 
         sendButton.translatesAutoresizingMaskIntoConstraints = false
         sendButton.title = "Send"
         sendButton.target = self
         sendButton.action = #selector(sendChatNow)
+
         closeButton.translatesAutoresizingMaskIntoConstraints = false
         closeButton.title = "Close"
         closeButton.target = self
         closeButton.action = #selector(closeChat)
 
-        chatContainer.translatesAutoresizingMaskIntoConstraints = false
-        contentView = chatContainer
-        chatContainer.addSubview(chatScrollView)
-        chatContainer.addSubview(inputRow)
+        inputStack.addArrangedSubview(inputField)
+        inputStack.addArrangedSubview(sendButton)
+        inputStack.addArrangedSubview(closeButton)
+
+        addSubview(chatScrollView)
+        addSubview(inputRow)
         inputRow.addSubview(inputStack)
 
         NSLayoutConstraint.activate([
-            chatScrollView.topAnchor.constraint(equalTo: chatContainer.topAnchor),
-            chatScrollView.leadingAnchor.constraint(equalTo: chatContainer.leadingAnchor),
-            chatScrollView.trailingAnchor.constraint(equalTo: chatContainer.trailingAnchor),
+            chatScrollView.topAnchor.constraint(equalTo: topAnchor),
+            chatScrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            chatScrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
             chatScrollView.bottomAnchor.constraint(equalTo: inputRow.topAnchor),
-            inputRow.leadingAnchor.constraint(equalTo: chatContainer.leadingAnchor),
-            inputRow.trailingAnchor.constraint(equalTo: chatContainer.trailingAnchor),
-            inputRow.bottomAnchor.constraint(equalTo: chatContainer.bottomAnchor),
+            inputRow.leadingAnchor.constraint(equalTo: leadingAnchor),
+            inputRow.trailingAnchor.constraint(equalTo: trailingAnchor),
+            inputRow.bottomAnchor.constraint(equalTo: bottomAnchor),
             inputStack.topAnchor.constraint(equalTo: inputRow.topAnchor),
             inputStack.bottomAnchor.constraint(equalTo: inputRow.bottomAnchor),
-            inputStack.leadingAnchor.constraint(equalTo: inputRow.leadingAnchor),
-            inputStack.trailingAnchor.constraint(equalTo: inputRow.trailingAnchor),
+            inputStack.leadingAnchor.constraint(equalTo: inputRow.leadingAnchor, constant: 8),
+            inputStack.trailingAnchor.constraint(equalTo: inputRow.trailingAnchor, constant: -8),
         ])
 
         inputField.delegate = self
     }
 
-    func show(pageText: String, owner: NSWindow) {
-        ownerWindow = owner
+    required init?(coder: NSCoder) { fatalError() }
+
+    func configure(pageText: String) {
         self.pageText = pageText
         history = []
         inputField.stringValue = ""
-        title = "Ask AI"
-        let frame = owner.frame
-        let height = min(max(frame.height * 0.75, 320), 520)
-        var panelFrame = frame
-        panelFrame.size.height = height
-        switch Settings.askPanelPosition {
-        case "left":
-            panelFrame.origin.x = frame.minX - panelFrame.width - 12
-            panelFrame.origin.y = frame.minY + (frame.height - height) / 2
-        case "bottom":
-            panelFrame.origin.y = frame.maxY + 8
-            panelFrame.size.height = min(max(frame.height * 0.5, 280), 420)
-        default:
-            panelFrame.origin.x = frame.maxX + 12
-            panelFrame.origin.y = frame.minY + (frame.height - height) / 2 - 20
-        }
-        setFrame(panelFrame, display: true)
-        orderFrontRegardless()
-        makeKeyAndOrderFront(nil)
         render()
     }
 
@@ -126,8 +100,10 @@ final class LocalChatPanel: NSPanel {
     }
 
     @objc func closeChat() {
-        orderOut(nil)
+        onHide?()
     }
+
+    var onHide: (() -> Void)?
 
     private func render() {
         let text = history.isEmpty ? "Ask a question about this page." : history.joined(separator: "\n\n")
@@ -163,7 +139,7 @@ final class LocalChatPanel: NSPanel {
     }
 }
 
-extension LocalChatPanel: NSTextFieldDelegate {
+extension LocalChatView: NSTextFieldDelegate {
     func textFieldShouldReturn(_ field: NSTextField) -> Bool {
         guard field === inputField else { return false }
         sendChatNow()

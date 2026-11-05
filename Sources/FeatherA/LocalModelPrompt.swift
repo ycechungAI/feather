@@ -27,9 +27,9 @@ enum LocalModelPrompt {
     }
 
     private static func askQuestion(pageText: String, window: NSWindow) {
-        // The chat side panel replaces the old alert popup: it opens docked to the side of the
-        // browser window with a history and an input field, and answers in place.
-        LocalChatPanel.shared.show(pageText: pageText, owner: window)
+        if let controller = BrowserWindowController.all.first(where: { $0.window === window }) {
+            controller.showAskPanel(pageText: pageText)
+        }
     }
 
     private static func route(question: String, pageText: String, window: NSWindow) async {

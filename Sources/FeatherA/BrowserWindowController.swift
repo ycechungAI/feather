@@ -15,7 +15,10 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
     let content = NSView()
     private let webArea = NSView()
     private let findBar = FindBar()
+    private let askPanel = LocalChatView()
     private var findBarHeight: NSLayoutConstraint!
+    private var webAreaConstraints: [NSLayoutConstraint] = []
+    private var askPanelConstraints: [NSLayoutConstraint] = []
     private let suggestions = SuggestionsPopup()
     private let addressField = NSTextField()
     private var backButton: NSButton!
@@ -431,12 +434,16 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
 
     private func layoutContent() {
         webArea.translatesAutoresizingMaskIntoConstraints = false
+        askPanel.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(findBar)
         content.addSubview(webArea)
+        content.addSubview(askPanel)
         findBar.isHidden = true
+        askPanel.isHidden = true
+        askPanel.onHide = { [weak self] in self?.hideAskPanel() }
         findBarHeight = findBar.heightAnchor.constraint(equalToConstant: 0)
         findBar.onClose = { [weak self] in self?.closeFindBar(nil) }
-        NSLayoutConstraint.activate([
+        webAreaConstraints = [
             findBar.topAnchor.constraint(equalTo: content.topAnchor),
             findBar.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             findBar.trailingAnchor.constraint(equalTo: content.trailingAnchor),
@@ -445,7 +452,8 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
             webArea.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             webArea.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             webArea.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-        ])
+        ]
+        NSLayoutConstraint.activate(webAreaConstraints)
         NotificationCenter.default.addObserver(self, selector: #selector(refreshStar),
                                                name: Bookmarks.changed, object: nil)
     }
@@ -1480,7 +1488,98 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
     /// Ask ▸ Ask Local Model (⌃⌘A): the local model answers about the page. Local only; see docs/AGENTIC.md.
     @objc func askLocalModel(_ sender: Any?) {
         guard let webView, let window else { return }
-        LocalModelPrompt.ask(webView: webView, window: window)
+        if !askPanel.isHidden {
+            hideAskPanel()
+            return
+        }
+        webView.evaluateJavaScript("document.body ? document.body.innerText : ''") { result, _ in
+            let pageText = result as? String ?? ""
+            Task { @MainActor in
+                if let controller = BrowserWindowController.all.first(where: { $0 === self }) {
+                    controller.showAskPanel(pageText: pageText)
+                }
+            }
+        }
+    }
+
+    func showAskPanel(pageText: String) {
+        askPanel.configure(pageText: pageText)
+        NSLayoutConstraint.deactivate(webAreaConstraints + askPanelConstraints)
+        askPanelConstraints.removeAll()
+        let pos = Settings.askPanelPosition
+        switch pos {
+        case "left":
+            webAreaConstraints = [
+                findBar.topAnchor.constraint(equalTo: content.topAnchor),
+                findBar.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+                findBar.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+                findBarHeight,
+                webArea.topAnchor.constraint(equalTo: findBar.bottomAnchor),
+                webArea.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+                webArea.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            ]
+            askPanelConstraints = [
+                askPanel.topAnchor.constraint(equalTo: findBar.bottomAnchor),
+                askPanel.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+                askPanel.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+                askPanel.widthAnchor.constraint(equalToConstant: 320),
+                webArea.leadingAnchor.constraint(equalTo: askPanel.trailingAnchor),
+            ]
+        case "bottom":
+            webAreaConstraints = [
+                findBar.topAnchor.constraint(equalTo: content.topAnchor),
+                findBar.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+                findBar.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+                findBarHeight,
+                webArea.topAnchor.constraint(equalTo: findBar.bottomAnchor),
+                webArea.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+                webArea.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            ]
+            askPanelConstraints = [
+                askPanel.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+                askPanel.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+                askPanel.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+                askPanel.heightAnchor.constraint(equalToConstant: 260),
+                webArea.bottomAnchor.constraint(equalTo: askPanel.topAnchor),
+            ]
+        default:
+            webAreaConstraints = [
+                findBar.topAnchor.constraint(equalTo: content.topAnchor),
+                findBar.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+                findBar.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+                findBarHeight,
+                webArea.topAnchor.constraint(equalTo: findBar.bottomAnchor),
+                webArea.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+                webArea.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            ]
+            askPanelConstraints = [
+                askPanel.topAnchor.constraint(equalTo: findBar.bottomAnchor),
+                askPanel.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+                askPanel.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+                askPanel.widthAnchor.constraint(equalToConstant: 320),
+                webArea.trailingAnchor.constraint(equalTo: askPanel.leadingAnchor),
+            ]
+        }
+        NSLayoutConstraint.activate(webAreaConstraints + askPanelConstraints)
+        askPanel.isHidden = false
+    }
+
+    func hideAskPanel() {
+        NSLayoutConstraint.deactivate(askPanelConstraints)
+        askPanelConstraints.removeAll()
+        NSLayoutConstraint.deactivate(webAreaConstraints)
+        webAreaConstraints = [
+            findBar.topAnchor.constraint(equalTo: content.topAnchor),
+            findBar.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            findBar.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            findBarHeight,
+            webArea.topAnchor.constraint(equalTo: findBar.bottomAnchor),
+            webArea.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            webArea.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            webArea.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+        ]
+        NSLayoutConstraint.activate(webAreaConstraints)
+        askPanel.isHidden = true
     }
 
     // MARK: WKNavigationDelegate
