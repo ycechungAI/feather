@@ -38,7 +38,7 @@ final class LocalChatView: NSView {
         // Header
         headerView.translatesAutoresizingMaskIntoConstraints = false
         headerView.wantsLayer = true
-        headerView.layer?.backgroundColor = NSColor(white: 0.12, alpha: 1).cgColor
+        headerView.layer?.backgroundColor = NSColor(white: 0.2, alpha: 1).cgColor
 
         iconView.translatesAutoresizingMaskIntoConstraints = false
         if let img = NSImage(systemSymbolName: "brain", accessibilityDescription: "AI") {
@@ -57,6 +57,7 @@ final class LocalChatView: NSView {
         tabControl.selectedSegment = 0
         tabControl.target = self
         tabControl.action = #selector(tabChanged(_:))
+        tabControl.segmentStyle = .texturedSquare
 
         headerView.addSubview(iconView)
         headerView.addSubview(nameLabel)
