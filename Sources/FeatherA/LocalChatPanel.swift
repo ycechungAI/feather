@@ -710,8 +710,8 @@ final class LocalChatView: NSView {
             } else {
                 b = NSButton(title: title ?? "", target: self, action: action)
             }
-            b.bezelStyle = .rounded
-            b.controlSize = .small
+            b.bezelStyle = .recessed
+            b.controlSize = .mini
             return b
         }
         taskButtons = topButtons
@@ -732,8 +732,8 @@ final class LocalChatView: NSView {
         }
         for (title, action) in bottomDefs {
             let b = NSButton(title: title ?? "", target: self, action: action)
-            b.bezelStyle = .rounded
-            b.controlSize = .small
+            b.bezelStyle = .recessed
+            b.controlSize = .mini
             taskBottomBar.addArrangedSubview(b)
         }
         lastButtonWidth = self.bounds.width
