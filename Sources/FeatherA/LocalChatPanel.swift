@@ -633,7 +633,7 @@ final class LocalChatView: NSView {
         }
         if twoColumns {
             let width = self.bounds.width > 0 ? self.bounds.width : 1280
-            let ncols = width >= 500 ? 2 : 1
+            let ncols = 1
             var cols: [NSStackView] = (0..<ncols).map { _ in
                 let st = NSStackView()
                 st.orientation = .vertical
