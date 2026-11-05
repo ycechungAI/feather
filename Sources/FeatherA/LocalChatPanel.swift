@@ -191,7 +191,7 @@ final class LocalChatView: NSView {
         taskButtonBar.orientation = .horizontal
         taskButtonBar.spacing = 6
         taskButtonBar.alignment = .centerY
-        for (title, action) in [("New", #selector(newTaskClicked(_:))),
+        for (title, action) in [("Add tasks", #selector(newTaskClicked(_:))),
                                  ("Delete", #selector(deleteTaskClicked(_:))),
                                  ("Run", #selector(runTaskClicked(_:))),
                                  ("Save", #selector(saveTasksClicked(_:))),
@@ -204,14 +204,14 @@ final class LocalChatView: NSView {
             taskButtonBar.addArrangedSubview(b)
         }
         NSLayoutConstraint.activate([
-            tasksScrollView.topAnchor.constraint(equalTo: tasksContainer.topAnchor),
-            tasksScrollView.leadingAnchor.constraint(equalTo: tasksContainer.leadingAnchor),
-            tasksScrollView.trailingAnchor.constraint(equalTo: tasksContainer.trailingAnchor),
-            tasksScrollView.bottomAnchor.constraint(equalTo: taskButtonBar.topAnchor, constant: -4),
+            taskButtonBar.topAnchor.constraint(equalTo: tasksContainer.topAnchor, constant: 4),
             taskButtonBar.leadingAnchor.constraint(equalTo: tasksContainer.leadingAnchor, constant: 8),
             taskButtonBar.trailingAnchor.constraint(equalTo: tasksContainer.trailingAnchor, constant: -8),
-            taskButtonBar.bottomAnchor.constraint(equalTo: tasksContainer.bottomAnchor, constant: -4),
             taskButtonBar.heightAnchor.constraint(equalToConstant: 28),
+            tasksScrollView.topAnchor.constraint(equalTo: taskButtonBar.bottomAnchor, constant: 4),
+            tasksScrollView.leadingAnchor.constraint(equalTo: tasksContainer.leadingAnchor),
+            tasksScrollView.trailingAnchor.constraint(equalTo: tasksContainer.trailingAnchor),
+            tasksScrollView.bottomAnchor.constraint(equalTo: tasksContainer.bottomAnchor),
         ])
 
         // Assemble
