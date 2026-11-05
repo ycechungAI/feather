@@ -692,6 +692,7 @@ final class LocalChatView: NSView {
             guard let data, let text = String(data: data, encoding: .utf8) else { return }
             DispatchQueue.main.async {
                 self?.resultsTextView.string = text
+                self?.logsTextView.string += "\n=== Task Result ===\n" + text + "\n"
             }
         }.resume()
     }
