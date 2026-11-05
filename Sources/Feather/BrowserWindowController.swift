@@ -1472,6 +1472,12 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         webView.printOperation(with: .shared).runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
     }
 
+    /// Ask ▸ Ask Local Model (⌃⌘A): the local model answers about the page. Local only; see docs/AGENTIC.md.
+    @objc func askLocalModel(_ sender: Any?) {
+        guard let webView, let window else { return }
+        LocalModelPrompt.ask(webView: webView, window: window)
+    }
+
     // MARK: WKNavigationDelegate
 
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,

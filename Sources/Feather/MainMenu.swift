@@ -56,6 +56,7 @@ enum MainMenu {
             item("Show Web Inspector", #selector(BrowserWindowController.showWebInspector(_:)), "i", [.command, .option]),
             item("Downloads", #selector(AppDelegate.showDownloads(_:)), "l", [.command, .option]),
             item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),
+            item("Ask Local Model", #selector(BrowserWindowController.askLocalModel(_:)), "a", [.command, .control]),
         ])
 
         let history = main.addSubmenu("History", [
