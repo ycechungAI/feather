@@ -526,40 +526,15 @@ final class LocalChatView: NSView {
     }
 
     @objc func tabChanged(_ sender: NSSegmentedControl) {
-        if !logsMode {
-            // normal mode
-            // handled by logsToggle button
-            chatContainer.isHidden = sender.selectedSegment != 0
-            tasksContainer.isHidden = sender.selectedSegment != 1
-            resultsContainer.isHidden = sender.selectedSegment != 2
-            logsContainer.isHidden = true
-            if sender.selectedSegment == 1 {
-                fetchTasks()
-            }
-            if sender.selectedSegment == 2 {
-                fetchResultsTasks()
-            }
-        } else {
-            if sender.selectedSegment == 0 {
-                // toggle back
-                logsMode = false
-                tabControl.segmentCount = 4
-                tabControl.setLabel("Ask", forSegment: 0)
-                tabControl.setLabel("Tasks", forSegment: 1)
-                tabControl.setLabel("Results", forSegment: 2)
-                tabControl.setLabel(">>", forSegment: 3)
-                tabControl.selectedSegment = 0
-                chatContainer.isHidden = false
-                tasksContainer.isHidden = true
-                resultsContainer.isHidden = true
-                logsContainer.isHidden = true
-                return
-            }
-            // Logs tab selected
-            chatContainer.isHidden = true
-            tasksContainer.isHidden = true
-            resultsContainer.isHidden = true
-            logsContainer.isHidden = false
+        chatContainer.isHidden = sender.selectedSegment != 0
+        tasksContainer.isHidden = sender.selectedSegment != 1
+        resultsContainer.isHidden = sender.selectedSegment != 2
+        logsContainer.isHidden = true
+        if sender.selectedSegment == 1 {
+            fetchTasks()
+        }
+        if sender.selectedSegment == 2 {
+            fetchResultsTasks()
         }
     }
 
@@ -600,7 +575,6 @@ final class LocalChatView: NSView {
 
     private func buildTaskRows(tasks: [[String: Any]]) {
         for v in taskRowsStack.arrangedSubviews { taskRowsStack.removeArrangedSubview(v); v.removeFromSuperview() }
-        let twoColumns = (panelPosition == "bottom")
         let makeRow: (Int, [String: Any]) -> NSStackView = { i, t in
             let name = t["name"] as? String ?? "?"
             let enabled = t["enabled"] as? Bool ?? false
@@ -608,82 +582,63 @@ final class LocalChatView: NSView {
             let status = t["status"] as? String ?? "?"
             let next = t["next_run"] as? String ?? "?"
             let row = NSStackView()
-            row.orientation = .horizontal
-            row.spacing = 6
-            row.alignment = .centerY
+            row.orientation = .vertical
+            row.spacing = 1
+            row.alignment = .leading
             let rowColor: NSColor
             switch status {
             case "running": rowColor = NSColor(calibratedRed: 1.0, green: 1.0, blue: 0.2, alpha: 1.0)
             case "failed": rowColor = NSColor(calibratedRed: 1.0, green: 0.2, blue: 0.2, alpha: 1.0)
             default: rowColor = NSColor(calibratedRed: 0.2, green: 1.0, blue: 0.2, alpha: 1.0)
             }
-            let green = NSColor(calibratedRed: 0.2, green: 1.0, blue: 0.2, alpha: 1.0)
-            let attr = NSMutableAttributedString()
-            let numStr = String(format: "%2d", i+1)
-            attr.append(NSAttributedString(string: numStr, attributes: [.foregroundColor: green, .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)]))
-            attr.append(NSAttributedString(string: String(format: "  %@ %@   %@ · %@ · %@", enabled ? "●" : "○", name, sched, status, next), attributes: [.foregroundColor: rowColor, .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)]))
-            let label = NSTextField(labelWithString: "")
-            label.attributedStringValue = attr
-            if self.panelPosition == "bottom" {
-                label.lineBreakMode = .byWordWrapping
-                label.maximumNumberOfLines = 0
-            } else {
-                label.lineBreakMode = .byTruncatingTail
-                label.maximumNumberOfLines = 1
-            }
-            label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            let numLabel = NSTextField(labelWithString: String(format: "%2d", i+1))
+            numLabel.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+            numLabel.textColor = NSColor(calibratedRed: 0.2, green: 1.0, blue: 0.2, alpha: 1.0)
+            numLabel.lineBreakMode = .byTruncatingTail
+            numLabel.maximumNumberOfLines = 1
+            numLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+            numLabel.setContentHuggingPriority(.required, for: .horizontal)
+            let dotLabel = NSTextField(labelWithString: enabled ? "●" : "○")
+            dotLabel.font = NSFont.systemFont(ofSize: 9)
+            dotLabel.textColor = enabled ? rowColor : NSColor.secondaryLabelColor
+            dotLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+            dotLabel.setContentHuggingPriority(.required, for: .horizontal)
+            let nameLabel = NSTextField(labelWithString: name)
+            nameLabel.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+            nameLabel.textColor = NSColor.white
+            nameLabel.lineBreakMode = .byTruncatingTail
+            nameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             let editBtn = NSButton(title: "Edit", target: self, action: #selector(self.editTaskByIndex(_:)))
             editBtn.bezelStyle = .recessed
             editBtn.controlSize = .mini
             editBtn.tag = i
+            editBtn.contentTintColor = .white
+            editBtn.attributedTitle = NSAttributedString(string: "Edit", attributes: [.foregroundColor: NSColor.white, .font: NSFont.systemFont(ofSize: 10)])
             editBtn.setContentHuggingPriority(.required, for: .horizontal)
             let runBtn = NSButton(title: "Run", target: self, action: #selector(self.runTaskByIndex(_:)))
             runBtn.bezelStyle = .recessed
             runBtn.controlSize = .mini
             runBtn.tag = i
+            runBtn.contentTintColor = .white
+            runBtn.attributedTitle = NSAttributedString(string: "Run", attributes: [.foregroundColor: NSColor.white, .font: NSFont.systemFont(ofSize: 10)])
             runBtn.setContentHuggingPriority(.required, for: .horizontal)
-            let spacer = NSView()
-            spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-            row.addArrangedSubview(label)
-            row.addArrangedSubview(spacer)
-            row.addArrangedSubview(editBtn)
-            row.addArrangedSubview(runBtn)
+            let row1 = NSStackView(views: [numLabel, dotLabel, nameLabel, NSView(), editBtn, runBtn])
+            row1.orientation = .horizontal
+            row1.spacing = 6
+            row1.alignment = .centerY
+            (row1.arrangedSubviews[3] as! NSView).setContentHuggingPriority(.defaultLow, for: .horizontal)
+            let infoLabel = NSTextField(labelWithString: String(format: "%@  ·  %@  ·  %@", sched, status, next))
+            infoLabel.font = NSFont.systemFont(ofSize: 9)
+            infoLabel.textColor = NSColor.secondaryLabelColor
+            infoLabel.lineBreakMode = .byTruncatingTail
+            infoLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            let row2 = NSStackView(views: [infoLabel])
+            row2.orientation = .horizontal
+            row2.spacing = 0
+            row2.alignment = .leading
+            row.addArrangedSubview(row1)
+            row.addArrangedSubview(row2)
             return row
-        }
-        if twoColumns {
-            let width = self.bounds.width > 0 ? self.bounds.width : 1280
-            let ncols = 1
-            var cols: [NSStackView] = (0..<ncols).map { _ in
-                let st = NSStackView()
-                st.orientation = .vertical
-                st.spacing = 2
-                st.alignment = .leading
-                return st
-            }
-            var padded = tasks
-            while padded.count < ncols * 2 { padded.append([:]) }
-            for (i, t) in padded.enumerated() {
-                if t.isEmpty {
-                    cols[i % ncols].addArrangedSubview(NSView())
-                    continue
-                }
-                cols[i % ncols].addArrangedSubview(makeRow(i, t))
-            }
-            let container = NSStackView(views: cols)
-            container.orientation = .horizontal
-            container.spacing = 8
-            container.alignment = .top
-            taskRowsStack.addArrangedSubview(container)
-        } else {
-            var padded = tasks
-            while padded.count < 3 { padded.append([:]) }
-            for (i, t) in padded.enumerated() {
-                if t.isEmpty {
-                    taskRowsStack.addArrangedSubview(NSView())
-                    continue
-                }
-                taskRowsStack.addArrangedSubview(makeRow(i, t))
-            }
         }
     }
 
