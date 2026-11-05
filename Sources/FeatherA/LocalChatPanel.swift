@@ -20,6 +20,8 @@ final class LocalChatView: NSView {
     private let tasksContainer = NSView()
     private let tasksScrollView = NSScrollView()
     private let tasksTextView = NSTextView()
+    private let taskButtonBar = NSStackView()
+    private var taskButtons: [NSButton] = []
     private let chatScrollView = NSScrollView()
     private let chatTextView = NSTextView()
     private let inputRow = NSView()
@@ -184,11 +186,32 @@ final class LocalChatView: NSView {
             container.widthTracksTextView = true
         }
         tasksContainer.addSubview(tasksScrollView)
+        tasksContainer.addSubview(taskButtonBar)
+        taskButtonBar.translatesAutoresizingMaskIntoConstraints = false
+        taskButtonBar.orientation = .horizontal
+        taskButtonBar.spacing = 6
+        taskButtonBar.alignment = .centerY
+        for (title, action) in [("New", #selector(newTaskClicked(_:))),
+                                 ("Delete", #selector(deleteTaskClicked(_:))),
+                                 ("Run", #selector(runTaskClicked(_:))),
+                                 ("Save", #selector(saveTasksClicked(_:))),
+                                 ("Restore", #selector(restoreTasksClicked(_:))),
+                                 ("Refresh", #selector(refreshTasksClicked(_:)))] {
+            let b = NSButton(title: title, target: self, action: action)
+            b.bezelStyle = .rounded
+            b.controlSize = .small
+            taskButtons.append(b)
+            taskButtonBar.addArrangedSubview(b)
+        }
         NSLayoutConstraint.activate([
             tasksScrollView.topAnchor.constraint(equalTo: tasksContainer.topAnchor),
             tasksScrollView.leadingAnchor.constraint(equalTo: tasksContainer.leadingAnchor),
             tasksScrollView.trailingAnchor.constraint(equalTo: tasksContainer.trailingAnchor),
-            tasksScrollView.bottomAnchor.constraint(equalTo: tasksContainer.bottomAnchor),
+            tasksScrollView.bottomAnchor.constraint(equalTo: taskButtonBar.topAnchor, constant: -4),
+            taskButtonBar.leadingAnchor.constraint(equalTo: tasksContainer.leadingAnchor, constant: 8),
+            taskButtonBar.trailingAnchor.constraint(equalTo: tasksContainer.trailingAnchor, constant: -8),
+            taskButtonBar.bottomAnchor.constraint(equalTo: tasksContainer.bottomAnchor, constant: -4),
+            taskButtonBar.heightAnchor.constraint(equalToConstant: 28),
         ])
 
         // Assemble
@@ -399,6 +422,121 @@ final class LocalChatView: NSView {
                 self.tasksTextView.string = lines.joined(separator: "\n")
             }
         }.resume()
+    }
+
+    @objc private func refreshTasksClicked(_ sender: Any?) { fetchTasks() }
+
+    @objc private func newTaskClicked(_ sender: Any?) {
+        let alert = NSAlert()
+        alert.messageText = "New task name"
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        field.placeholderString = "my-task"
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Create")
+        alert.addButton(withTitle: "Cancel")
+        guard let window = self.window else { return }
+        alert.beginSheetModal(for: window) { resp in
+            guard resp == .alertFirstButtonReturn else { return }
+            let name = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty else { return }
+            let filename = name + ".md"
+            let content = "---\ntitle: \(name)\nschedule: \"0 9 * * *\"\nenabled: true\n---\n\nDescribe what this task should do.\n"
+            guard let url = URL(string: "http://127.0.0.1:8787/api/tasks/file") else { return }
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = try? JSONSerialization.data(withJSONObject: ["filename": filename, "content": content])
+            URLSession.shared.dataTask(with: req) { _, _, _ in
+                DispatchQueue.main.async { self.fetchTasks() }
+            }.resume()
+        }
+    }
+
+    @objc private func deleteTaskClicked(_ sender: Any?) {
+        let alert = NSAlert()
+        alert.messageText = "Delete task filename"
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        field.placeholderString = "task.md"
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Delete")
+        alert.addButton(withTitle: "Cancel")
+        guard let window = self.window else { return }
+        alert.beginSheetModal(for: window) { resp in
+            guard resp == .alertFirstButtonReturn else { return }
+            let filename = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !filename.isEmpty else { return }
+            guard let url = URL(string: "http://127.0.0.1:8787/api/tasks/file/\(filename)") else { return }
+            var req = URLRequest(url: url)
+            req.httpMethod = "DELETE"
+            URLSession.shared.dataTask(with: req) { _, _, _ in
+                DispatchQueue.main.async { self.fetchTasks() }
+            }.resume()
+        }
+    }
+
+    @objc private func runTaskClicked(_ sender: Any?) {
+        let alert = NSAlert()
+        alert.messageText = "Run task id"
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        field.placeholderString = "task-id"
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Run")
+        alert.addButton(withTitle: "Cancel")
+        guard let window = self.window else { return }
+        alert.beginSheetModal(for: window) { resp in
+            guard resp == .alertFirstButtonReturn else { return }
+            let taskId = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !taskId.isEmpty else { return }
+            guard let url = URL(string: "http://127.0.0.1:8787/api/tasks/\(taskId)/run") else { return }
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            URLSession.shared.dataTask(with: req) { _, _, _ in
+                DispatchQueue.main.async { self.fetchTasks() }
+            }.resume()
+        }
+    }
+
+    @objc private func saveTasksClicked(_ sender: Any?) {
+        guard let url = URL(string: "http://127.0.0.1:8787/api/tasks") else { return }
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+            guard let data else { return }
+            let dest = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("FeatherA/saved_tasks.json")
+            try? FileManager.default.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? data.write(to: dest, options: .atomic)
+            DispatchQueue.main.async {
+                let a = NSAlert()
+                a.messageText = "Tasks saved"
+                a.runModal()
+            }
+        }.resume()
+    }
+
+    @objc private func restoreTasksClicked(_ sender: Any?) {
+        let src = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("FeatherA/saved_tasks.json")
+        guard let data = try? Data(contentsOf: src),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let tasks = obj["tasks"] as? [[String: Any]] else {
+            let a = NSAlert(); a.messageText = "No saved tasks"; a.runModal(); return
+        }
+        // Recreate each task via POST
+        for t in tasks {
+            guard let filename = t["filename"] as? String else { continue }
+            // fetch file content
+            guard let url = URL(string: "http://127.0.0.1:8787/api/tasks/file/\(filename)") else { continue }
+            URLSession.shared.dataTask(with: url) { data, _, _ in
+                guard let data, let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let content = o["content"] as? String else { return }
+                guard let createURL = URL(string: "http://127.0.0.1:8787/api/tasks/file") else { return }
+                var req = URLRequest(url: createURL)
+                req.httpMethod = "POST"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = try? JSONSerialization.data(withJSONObject: ["filename": filename, "content": content])
+                URLSession.shared.dataTask(with: req) { _, _, _ in }.resume()
+            }.resume()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.fetchTasks() }
     }
 
     private func answer(question: String) async {
