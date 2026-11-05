@@ -1558,7 +1558,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
                 askPanel.leadingAnchor.constraint(equalTo: content.leadingAnchor),
                 askPanel.trailingAnchor.constraint(equalTo: content.trailingAnchor),
                 askPanel.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-                { let c = askPanel.heightAnchor.constraint(equalToConstant: 360); self.askPanelSizeConstraint = c; return c }(),
+                { let c = askPanel.heightAnchor.constraint(equalToConstant: 240); self.askPanelSizeConstraint = c; return c }(),
                 webArea.bottomAnchor.constraint(equalTo: askPanel.topAnchor),
             ]
         default:
