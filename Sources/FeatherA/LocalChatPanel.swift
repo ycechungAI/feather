@@ -438,8 +438,13 @@ final class LocalChatView: NSView {
                 resizeHandle.widthAnchor.constraint(equalToConstant: 6),
             ]
         case "bottom":
-            resizeHandle.isHidden = true
-            handleConstraints = []
+            resizeHandle.isHidden = false
+            handleConstraints = [
+                resizeHandle.topAnchor.constraint(equalTo: topAnchor),
+                resizeHandle.leadingAnchor.constraint(equalTo: leadingAnchor),
+                resizeHandle.trailingAnchor.constraint(equalTo: trailingAnchor),
+                resizeHandle.heightAnchor.constraint(equalToConstant: 6),
+            ]
         default:
             resizeHandle.isHidden = false
             handleConstraints = [
