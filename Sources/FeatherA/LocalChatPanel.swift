@@ -940,9 +940,11 @@ final class LocalChatView: NSView {
                 b = NSButton(image: img ?? NSImage(), target: self, action: action)
             } else {
                 b = NSButton(title: title ?? "", target: self, action: action)
+                b.attributedTitle = NSAttributedString(string: title ?? "", attributes: [.foregroundColor: NSColor.white, .font: NSFont.systemFont(ofSize: 10)])
             }
             b.bezelStyle = .recessed
             b.controlSize = .mini
+            b.contentTintColor = .white
             return b
         }
         let defs: [(String?, String?, Selector)] = [("Add tasks", nil, #selector(newTaskClicked(_:))),
