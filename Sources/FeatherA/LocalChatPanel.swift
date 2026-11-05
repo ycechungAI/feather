@@ -569,8 +569,10 @@ final class LocalChatView: NSView {
             runBtn.tag = i
             runBtn.setContentHuggingPriority(.required, for: .horizontal)
             label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            let spacer = NSView()
+            spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
             row.addArrangedSubview(label)
-            row.addArrangedSubview(NSView()) // spacer
+            row.addArrangedSubview(spacer)
             row.addArrangedSubview(editBtn)
             row.addArrangedSubview(runBtn)
             taskRowsStack.addArrangedSubview(row)
