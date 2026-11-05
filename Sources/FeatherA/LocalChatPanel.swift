@@ -28,6 +28,9 @@ final class LocalChatView: NSView {
     private let runPicker = NSPopUpButton()
     private var currentResultTaskId: String?
     private var currentRuns: [[String: Any]] = []
+    var pendingEditFilename: String?
+    var pendingEditTextView: NSTextView?
+    var pendingEditSaveButton: NSButton?
     private var currentTasksForResults: [[String: Any]] = []
     private var logsMode: Bool = false
     private let taskButtonBar = NSStackView()
@@ -616,21 +619,46 @@ final class LocalChatView: NSView {
                 scroll.documentView = tv
                 scroll.hasVerticalScroller = true
                 alert.accessoryView = scroll
-                alert.addButton(withTitle: "Save")
-                alert.addButton(withTitle: "Cancel")
+                let verifyBtn = NSButton(title: "Verify", target: nil, action: nil)
+                verifyBtn.bezelStyle = .rounded
+                verifyBtn.controlSize = .small
+                let saveBtn = NSButton(title: "Save", target: nil, action: nil)
+                saveBtn.bezelStyle = .rounded
+                saveBtn.controlSize = .small
+                saveBtn.isHidden = true
+                let cancelBtn = NSButton(title: "Cancel", target: nil, action: nil)
+                cancelBtn.bezelStyle = .rounded
+                cancelBtn.controlSize = .small
+                let btnRow = NSStackView(views: [verifyBtn, saveBtn, cancelBtn])
+                btnRow.orientation = .horizontal
+                btnRow.spacing = 6
+                btnRow.translatesAutoresizingMaskIntoConstraints = false
+                let container = NSView(frame: NSRect(x: 0, y: 0, width: 480, height: 340))
+                scroll.frame = NSRect(x: 0, y: 40, width: 480, height: 300)
+                container.addSubview(scroll)
+                container.addSubview(btnRow)
+                NSLayoutConstraint.activate([
+                    btnRow.topAnchor.constraint(equalTo: container.topAnchor, constant: 4),
+                    btnRow.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -8),
+                ])
+                alert.accessoryView = container
+
+                verifyBtn.target = self
+                verifyBtn.action = #selector(self.verifyTaskText(_:))
+                saveBtn.target = self
+                saveBtn.action = #selector(self.saveTaskText(_:))
+                cancelBtn.target = self
+                cancelBtn.action = #selector(self.cancelTaskEdit(_:))
+
+                // store context via tags on buttons
+                verifyBtn.tag = 0
+                // use a shared holder
+                self.pendingEditFilename = filename
+                self.pendingEditTextView = tv
+                self.pendingEditSaveButton = saveBtn
+
                 guard let window = self.window else { return }
-                alert.beginSheetModal(for: window) { resp in
-                    guard resp == .alertFirstButtonReturn else { return }
-                    let newContent = tv.string
-                    guard let putURL = URL(string: "http://127.0.0.1:8787/api/tasks/file/\(filename)") else { return }
-                    var req = URLRequest(url: putURL)
-                    req.httpMethod = "PUT"
-                    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                    req.httpBody = try? JSONSerialization.data(withJSONObject: ["content": newContent])
-                    URLSession.shared.dataTask(with: req) { _, _, _ in
-                        DispatchQueue.main.async { self.fetchTasks() }
-                    }.resume()
-                }
+                alert.beginSheetModal(for: window) { _ in }
             }
         }.resume()
     }
@@ -1071,6 +1099,42 @@ final class LocalChatView: NSView {
         lines.append("Next run: \(task["next_run"] as? String ?? "?")")
         lines.append("Model: \(task["model"] as? String ?? "?")")
         tasksTextView.string = lines.joined(separator: "\n")
+    }
+
+    @objc private func verifyTaskText(_ sender: Any?) {
+        guard let tv = pendingEditTextView else { return }
+        let text = tv.string
+        // deterministic format check
+        let ok = text.contains("---") && text.contains("id:") && text.contains("name:") && text.contains("schedule:") && text.split(separator: "\n").count > 6
+        if ok {
+            pendingEditSaveButton?.isHidden = false
+            let a = NSAlert(); a.messageText = "Verified — format OK"; a.runModal()
+        } else {
+            let a = NSAlert(); a.messageText = "Verification failed — missing frontmatter (id, name, schedule) or body"; a.runModal()
+        }
+    }
+
+    @objc private func saveTaskText(_ sender: Any?) {
+        guard let filename = pendingEditFilename, let tv = pendingEditTextView else { return }
+        let newContent = tv.string
+        guard let putURL = URL(string: "http://127.0.0.1:8787/api/tasks/file/\(filename)") else { return }
+        var req = URLRequest(url: putURL)
+        req.httpMethod = "PUT"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["content": newContent])
+        URLSession.shared.dataTask(with: req) { _, _, _ in
+            DispatchQueue.main.async { self.fetchTasks() }
+        }.resume()
+        // close sheet
+        if let window = self.window, let sheet = window.attachedSheet {
+            window.endSheet(sheet)
+        }
+    }
+
+    @objc private func cancelTaskEdit(_ sender: Any?) {
+        if let window = self.window, let sheet = window.attachedSheet {
+            window.endSheet(sheet)
+        }
     }
 
     private func answer(question: String) async {
