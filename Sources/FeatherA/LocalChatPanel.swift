@@ -530,7 +530,7 @@ final class LocalChatView: NSView {
                     return
                 }
                 var lines: [String] = ["noskill scheduled tasks (max 50):", ""]
-                for (i, t) in tasks.prefix(50).enumerated() {
+                for (i, t) in tasks.enumerated() {
                     let name = t["name"] as? String ?? "?"
                     let sched = t["schedule"] as? String ?? "?"
                     let enabled = t["enabled"] as? Bool ?? false
