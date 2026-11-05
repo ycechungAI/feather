@@ -862,25 +862,24 @@ final class LocalChatView: NSView {
     @objc private func refreshTasksClicked(_ sender: Any?) { fetchTasks() }
 
     @objc private func newTaskClicked(_ sender: Any?) {
-        let alert = NSAlert()
-        alert.messageText = "New local task (standalone)"
-        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
-        field.placeholderString = "my-task"
-        alert.accessoryView = field
-        alert.addButton(withTitle: "Create")
-        alert.addButton(withTitle: "Cancel")
-        guard let window = self.window else { return }
-        alert.beginSheetModal(for: window) { [weak self] resp in
+        let win = self.window ?? NSApp.keyWindow
+        let nameAlert = NSAlert()
+        nameAlert.messageText = "New local task"
+        nameAlert.informativeText = "Enter a task name, then add details."
+        let nameField = NSTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 24))
+        nameField.placeholderString = "my-task"
+        nameAlert.accessoryView = nameField
+        nameAlert.addButton(withTitle: "Next")
+        nameAlert.addButton(withTitle: "Cancel")
+        let handleName: (NSApplication.ModalResponse) -> Void = { [weak self] resp in
             guard let self, resp == .alertFirstButtonReturn else { return }
-            let name = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !name.isEmpty else { return }
-            let safe = name.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
-            let filename = safe + ".md"
-            let id = safe
-            let content = """
+            let rawName = nameField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !rawName.isEmpty else { return }
+            let safe = rawName.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-").replacingOccurrences(of: " ", with: "-")
+            let template = """
             ---
-            id: \(id)
-            name: \(name)
+            id: \(safe)
+            name: \(rawName)
             schedule: "manual"
             enabled: true
             model: granite4:3b
@@ -888,15 +887,46 @@ final class LocalChatView: NSView {
 
             Describe what this task should do. When run, this text is sent to the local Ollama model as the workflow prompt.
             """
-            let url = self.localTasksDirectory().appendingPathComponent(filename)
-            do {
-                try content.write(to: url, atomically: true, encoding: .utf8)
-                self.fetchTasks()
-                self.appendLog("[tasks] Created \(filename) in \(self.localTasksDirectory().path)")
-            } catch {
-                self.showTaskAlert("Create failed", "Could not save \(filename): \(error.localizedDescription)")
+            let detail = NSAlert()
+            detail.messageText = "Task details: \(rawName)"
+            detail.informativeText = "Edit schedule/model/prompt, then Create."
+            let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 520, height: 320))
+            scroll.hasVerticalScroller = true
+            scroll.borderType = .bezelBorder
+            let tv = NSTextView(frame: NSRect(x: 0, y: 0, width: 520, height: 320))
+            tv.isEditable = true
+            tv.isRichText = false
+            tv.isVerticallyResizable = true
+            tv.autoresizingMask = [.width]
+            tv.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+            tv.string = template
+            if let c = tv.textContainer { c.widthTracksTextView = true }
+            scroll.documentView = tv
+            detail.accessoryView = scroll
+            detail.addButton(withTitle: "Create")
+            detail.addButton(withTitle: "Cancel")
+            let win2 = self.window ?? NSApp.keyWindow
+            let handleDetail: (NSApplication.ModalResponse) -> Void = { [weak self] resp2 in
+                guard let self, resp2 == .alertFirstButtonReturn else { return }
+                let content = tv.string
+                let fm = self.parseFrontmatter(content)
+                let base = (fm["id"] ?? fm["name"] ?? safe).trimmingCharacters(in: .whitespacesAndNewlines)
+                let fnameBase = (base.isEmpty ? safe : base).replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: " ", with: "-")
+                let filename = fnameBase.hasSuffix(".md") ? fnameBase : fnameBase + ".md"
+                let url = self.localTasksDirectory().appendingPathComponent(filename)
+                do {
+                    try content.write(to: url, atomically: true, encoding: .utf8)
+                    self.fetchTasks()
+                    self.appendLog("[tasks] Created \(filename)")
+                } catch {
+                    self.showTaskAlert("Create failed", "Could not save \(filename): \(error.localizedDescription)")
+                }
             }
+            if let win2 { detail.beginSheetModal(for: win2, completionHandler: handleDetail) }
+            else { handleDetail(detail.runModal()) }
         }
+        if let win { nameAlert.beginSheetModal(for: win, completionHandler: handleName) }
+        else { handleName(nameAlert.runModal()) }
     }
 
     @objc private func deleteTaskClicked(_ sender: Any?) {
