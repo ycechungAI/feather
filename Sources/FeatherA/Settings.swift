@@ -60,6 +60,7 @@ enum Settings {
             "webInspector": false,
             "askPanelPosition": "right",
             "saveChatHistory": true,
+            "askPanelWidth": 380,
         ])
     }
 
@@ -142,6 +143,11 @@ enum Settings {
     static var askPanelPosition: String {
         get { d.string(forKey: "askPanelPosition") ?? "right" }
         set { d.set(newValue, forKey: "askPanelPosition") }
+    }
+    /// Last width of the Ask AI side panel (for right/left docking).
+    static var askPanelWidth: Double {
+        get { d.object(forKey: "askPanelWidth") == nil ? 380 : d.double(forKey: "askPanelWidth") }
+        set { d.set(newValue, forKey: "askPanelWidth") }
     }
 
     /// Whether chat history persists across sessions. When off, history is in-memory only.
