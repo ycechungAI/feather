@@ -22,6 +22,7 @@ final class LocalChatView: NSView {
     private let tasksTextView = NSTextView()
     private let taskButtonBar = NSStackView()
     private var taskButtons: [NSButton] = []
+    private var currentTasks: [[String: Any]] = []
     private let chatScrollView = NSScrollView()
     private let chatTextView = NSTextView()
     private let inputRow = NSView()
@@ -397,18 +398,19 @@ final class LocalChatView: NSView {
                     self.tasksTextView.string = "noskill daemon not running on :8787.\nStart: sched serve --port 8787"
                     return
                 }
-                var lines: [String] = ["noskill scheduled tasks:", ""]
-                for t in tasks {
+                var lines: [String] = ["noskill scheduled tasks (max 50):", ""]
+                for (i, t) in tasks.prefix(50).enumerated() {
                     let name = t["name"] as? String ?? "?"
                     let sched = t["schedule"] as? String ?? "?"
                     let enabled = t["enabled"] as? Bool ?? false
                     let status = t["status"] as? String ?? "?"
                     let next = t["next_run"] as? String ?? "?"
-                    lines.append("\(enabled ? "●" : "○") \(name)")
+                    lines.append("\(i+1). \(enabled ? "●" : "○") \(name)")
                     lines.append("   schedule: \(sched)  status: \(status)")
                     lines.append("   next run: \(next)")
                     lines.append("")
                 }
+                self.currentTasks = tasks
                 self.tasksTextView.string = lines.joined(separator: "\n")
             }
         }.resume()
@@ -444,17 +446,19 @@ final class LocalChatView: NSView {
 
     @objc private func deleteTaskClicked(_ sender: Any?) {
         let alert = NSAlert()
-        alert.messageText = "Delete task filename"
+        alert.messageText = "Delete task number (1-\(min(currentTasks.count, 50)))"
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
-        field.placeholderString = "task.md"
+        field.placeholderString = "1"
         alert.accessoryView = field
         alert.addButton(withTitle: "Delete")
         alert.addButton(withTitle: "Cancel")
         guard let window = self.window else { return }
         alert.beginSheetModal(for: window) { resp in
             guard resp == .alertFirstButtonReturn else { return }
-            let filename = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !filename.isEmpty else { return }
+            guard let n = Int(field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)),
+                  n >= 1, n <= self.currentTasks.count, n <= 50 else { return }
+            let task = self.currentTasks[n-1]
+            guard let filename = task["filename"] as? String else { return }
             guard let url = URL(string: "http://127.0.0.1:8787/api/tasks/file/\(filename)") else { return }
             var req = URLRequest(url: url)
             req.httpMethod = "DELETE"
@@ -466,17 +470,19 @@ final class LocalChatView: NSView {
 
     @objc private func runTaskClicked(_ sender: Any?) {
         let alert = NSAlert()
-        alert.messageText = "Run task id"
+        alert.messageText = "Run task number (1-\(min(currentTasks.count, 50)))"
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
-        field.placeholderString = "task-id"
+        field.placeholderString = "1"
         alert.accessoryView = field
         alert.addButton(withTitle: "Run")
         alert.addButton(withTitle: "Cancel")
         guard let window = self.window else { return }
         alert.beginSheetModal(for: window) { resp in
             guard resp == .alertFirstButtonReturn else { return }
-            let taskId = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !taskId.isEmpty else { return }
+            guard let n = Int(field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)),
+                  n >= 1, n <= self.currentTasks.count, n <= 50 else { return }
+            let task = self.currentTasks[n-1]
+            guard let taskId = task["id"] as? String else { return }
             guard let url = URL(string: "http://127.0.0.1:8787/api/tasks/\(taskId)/run") else { return }
             var req = URLRequest(url: url)
             req.httpMethod = "POST"
