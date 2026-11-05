@@ -677,7 +677,14 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         forwardButton = toolbarButton("chevron.right", "Forward", #selector(navigateForward(_:)))
         reloadButton = toolbarButton("arrow.clockwise", "Reload", #selector(reloadPage(_:)))
         homeButton = toolbarButton("house", "Home", #selector(goHome(_:)))
-        askButton = toolbarButton("brain", "Ask AI (local model)", #selector(askLocalModel(_:)))
+        let brain = NSImage(systemSymbolName: "brain", accessibilityDescription: "Ask AI (local model)") ?? NSImage()
+        askButton = NSButton(image: brain, target: self, action: #selector(askLocalModel(_:)))
+        askButton.title = "AI"
+        askButton.imagePosition = .imageOverlaps
+        askButton.font = NSFont.boldSystemFont(ofSize: 7)
+        askButton.bezelStyle = .texturedRounded
+        askButton.isBordered = false
+        askButton.toolTip = "Ask AI (local model)"
         shieldButton = toolbarButton("shield.lefthalf.filled", "Shields", #selector(showShieldsMenu(_:)))
         downloadsButton = toolbarButton("arrow.down.circle", "Downloads (⌥⌘L)", #selector(AppDelegate.showDownloads(_:)))
         downloadsButton.target = NSApp.delegate
