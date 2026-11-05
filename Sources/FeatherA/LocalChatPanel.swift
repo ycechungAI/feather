@@ -13,7 +13,9 @@ final class LocalChatView: NSView {
     private let iconView = NSImageView()
     private let nameLabel = NSTextField(labelWithString: "AI")
     private let tabControl = NSSegmentedControl()
+    private let agentsToggle = NSButton()
     private let logsToggle = NSButton()
+    private var agentsMode: Bool = false
 
     // Chat
     private let chatContainer = NSView()
@@ -42,6 +44,8 @@ final class LocalChatView: NSView {
     private let tasksPerPage: Int = 5
     private var taskButtons: [NSButton] = []
     private var currentTasks: [[String: Any]] = []
+    private var scheduleTimer: Timer?
+    private var lastAutoRun: [String: Date] = [:]
     private let chatScrollView = NSScrollView()
     private let chatTextView = NSTextView()
     private let inputRow = NSView()
@@ -99,6 +103,10 @@ final class LocalChatView: NSView {
         tabControl.action = #selector(tabChanged(_:))
         tabControl.segmentStyle = .texturedSquare
         tabControl.appearance = NSAppearance(named: .darkAqua)
+
+        tabControl.segmentCount = 1
+        tabControl.setLabel("Ask", forSegment: 0)
+        tabControl.selectedSegment = 0
 
         headerView.addSubview(iconView)
         headerView.addSubview(nameLabel)
@@ -205,10 +213,14 @@ final class LocalChatView: NSView {
         logsNav.spacing = 4
         let logsUp = NSButton(title: "<", target: self, action: #selector(scrollLogsUp(_:)))
         let logsDown = NSButton(title: ">", target: self, action: #selector(scrollLogsDown(_:)))
+        let logsAgents = NSButton(title: "Agents", target: self, action: #selector(toggleAgentsMode(_:)))
         logsUp.bezelStyle = .recessed; logsUp.controlSize = .mini
         logsDown.bezelStyle = .recessed; logsDown.controlSize = .mini
+        logsAgents.bezelStyle = .recessed; logsAgents.controlSize = .mini
+        logsAgents.toolTip = "Standalone local tasks (inside Logs)"
         logsNav.addArrangedSubview(logsUp)
         logsNav.addArrangedSubview(logsDown)
+        logsNav.addArrangedSubview(logsAgents)
         logsContainer.addSubview(logsScrollView)
         logsContainer.addSubview(logsNav)
         NSLayoutConstraint.activate([
@@ -375,7 +387,7 @@ final class LocalChatView: NSView {
             nameLabel.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
             nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: tabControl.leadingAnchor, constant: -4),
 
-            tabControl.trailingAnchor.constraint(equalTo: logsToggle.leadingAnchor, constant: -8),
+            tabControl.trailingAnchor.constraint(lessThanOrEqualTo: logsToggle.leadingAnchor, constant: -8),
             tabControl.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
             logsToggle.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -8),
             logsToggle.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
@@ -500,6 +512,42 @@ final class LocalChatView: NSView {
         default:
             break
         }
+    }
+
+    private func updateAgentsToggleTitle() {
+        let title = agentsMode ? "A" : "A"
+        let alpha: CGFloat = agentsMode ? 1.0 : 0.55
+        agentsToggle.attributedTitle = NSAttributedString(string: title, attributes: [
+            .foregroundColor: NSColor.white.withAlphaComponent(alpha),
+            .font: NSFont.systemFont(ofSize: 10, weight: agentsMode ? .bold : .regular)
+        ])
+    }
+
+    private func applyAgentsMode() {
+        if agentsMode {
+            let selected = min(max(tabControl.selectedSegment, 0), 2)
+            tabControl.segmentCount = 3
+            tabControl.setLabel("Ask", forSegment: 0)
+            tabControl.setLabel("Tasks", forSegment: 1)
+            tabControl.setLabel("Results", forSegment: 2)
+            tabControl.selectedSegment = selected == 0 ? 0 : selected
+            startBasicScheduler()
+        } else {
+            tabControl.segmentCount = 1
+            tabControl.setLabel("Ask", forSegment: 0)
+            tabControl.selectedSegment = 0
+            tasksContainer.isHidden = true
+            resultsContainer.isHidden = true
+            if !logsMode { chatContainer.isHidden = false }
+            stopBasicScheduler()
+        }
+        updateAgentsToggleTitle()
+    }
+
+    @objc private func toggleAgentsMode(_ sender: Any?) {
+        agentsMode.toggle()
+        applyAgentsMode()
+        if agentsMode, tabControl.selectedSegment == 1 { fetchTasks() }
     }
 
     @objc func toggleLogsMode(_ sender: Any?) {
@@ -686,143 +734,191 @@ final class LocalChatView: NSView {
     @objc private func runTaskByIndex(_ sender: NSButton) {
         let idx = sender.tag
         guard idx >= 0, idx < currentTasks.count else { return }
-        let task = currentTasks[idx]
-        guard let taskId = task["id"] as? String else { return }
-        guard let url = URL(string: "http://127.0.0.1:8787/api/tasks/\(taskId)/run") else { return }
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        URLSession.shared.dataTask(with: req) { _, _, _ in
-            DispatchQueue.main.async {
-                self.fetchTasks()
-                self.pollResult(taskId: taskId, attempts: 0)
-            }
-        }.resume()
+        runLocalTask(at: idx)
     }
+
+    private func runLocalTask(at idx: Int) {
+        guard idx >= 0, idx < currentTasks.count else { return }
+        let task = currentTasks[idx]
+        let taskId = task["id"] as? String ?? "task"
+        let name = task["name"] as? String ?? taskId
+        let model = task["model"] as? String ?? ServicesConfig.load().answerModel
+        let filename = task["filename"] as? String
+        let content = (filename.flatMap { try? String(contentsOf: localTasksDirectory().appendingPathComponent($0), encoding: .utf8) })
+            ?? (task["content"] as? String) ?? "Run task: \(name)"
+        appendLog("[task] Running \(name) (standalone, model=\(model))")
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let result = try await LocalModel(config: ServicesConfig.load()).runPrompt(content, model: model)
+                let run: [String: Any] = [
+                    "task_id": taskId, "task_name": name, "model": model,
+                    "status": "success", "started_at": ISO8601DateFormatter().string(from: Date()),
+                    "output": result
+                ]
+                self.saveLocalRun(taskId: taskId, run: run)
+                self.resultsTextView.string = "Task: \(name)\nStatus: success\nModel: \(model)\n\n\(result)"
+                self.tabControl.segmentCount = self.agentsMode ? 3 : 1
+                self.appendLog("[task] \(name): success")
+                self.fetchTasks()
+            } catch {
+                self.saveLocalRun(taskId: taskId, run: ["task_id": taskId, "task_name": name, "status": "failed", "error": "\(error)", "output": ""])
+                self.resultsTextView.string = "Task: \(name)\nStatus: failed\n\n\(error)"
+                self.appendLog("[task] \(name): failed — \(error)")
+                self.fetchTasks()
+            }
+        }
+    }
+
+    private func saveLocalRun(taskId: String, run: [String: Any]) {
+        let safe = taskId.replacingOccurrences(of: "/", with: "-")
+        let url = localRunsDirectory().appendingPathComponent("\(safe).last.json")
+        if let data = try? JSONSerialization.data(withJSONObject: run, options: [.prettyPrinted, .sortedKeys]) {
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+
+    // Basic in-app scheduling (standalone, runs only while FeatherA is open; requires only Ollama).
+    private func startBasicScheduler() {
+        stopBasicScheduler()
+        appendLog("[scheduler] Basic in-app scheduler started (checks every 60s)")
+        scheduleTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.checkScheduledTasks() }
+        }
+        checkScheduledTasks()
+    }
+
+    private func stopBasicScheduler() {
+        scheduleTimer?.invalidate()
+        scheduleTimer = nil
+    }
+
+    private func checkScheduledTasks() {
+        let tasks = loadLocalTasks()
+        let now = Date()
+        for (i, t) in tasks.enumerated() {
+            let enabled = t["enabled"] as? Bool ?? false
+            guard enabled else { continue }
+            let sched = (t["schedule"] as? String ?? "manual").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard sched.lowercased() != "manual", !sched.isEmpty, sched != "-" else { continue }
+            let id = t["id"] as? String ?? (t["filename"] as? String ?? "task\(i)")
+            if isTaskDue(schedule: sched, id: id, now: now) {
+                lastAutoRun[id] = now
+                appendLog("[scheduler] Due: \(t["name"] as? String ?? id) (\(sched))")
+                runLocalTask(at: i)
+            }
+        }
+    }
+
+    private func isTaskDue(schedule: String, id: String, now: Date) -> Bool {
+        if let last = lastAutoRun[id], now.timeIntervalSince(last) < 55 { return false }
+        let s = schedule.lowercased()
+        let cal = Calendar.current
+        if s == "@hourly" { return cal.component(.minute, from: now) == 0 }
+        if s == "@daily" { return cal.component(.hour, from: now) == 9 && cal.component(.minute, from: now) == 0 }
+        if s.hasPrefix("@every") {
+            let parts = s.split(separator: " ")
+            if parts.count >= 2 {
+                let token = String(parts[1])
+                if let n = Int(token.filter({ $0.isNumber })), n > 0 {
+                    let interval: TimeInterval = token.contains("h") ? Double(n) * 3600 : Double(n) * 60
+                    if let last = lastAutoRun[id] { return now.timeIntervalSince(last) >= interval }
+                    return true
+                }
+            }
+        }
+        // minimal cron: "M H * * *" (daily at H:M local)
+        let c = schedule.split(separator: " ").map(String.init)
+        if c.count >= 5, c[2] == "*", c[3] == "*", c[4] == "*" {
+            if let m = Int(c[0]), let h = Int(c[1]) {
+                return cal.component(.hour, from: now) == h && cal.component(.minute, from: now) == m
+            }
+        }
+        return false // unsupported cron -> drop (no auto-run)
+    }
+
 
     @objc private func editTaskByIndex(_ sender: NSButton) {
         let idx = sender.tag
         guard idx >= 0, idx < currentTasks.count else { return }
         let task = currentTasks[idx]
         guard let filename = task["filename"] as? String else { return }
-        guard let url = URL(string: "http://127.0.0.1:8787/api/tasks/file/\(filename)") else { return }
-        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
-            guard let data, let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let content = obj["content"] as? String else { return }
-            DispatchQueue.main.async {
-                guard let self else { return }
-                let alert = NSAlert()
-                alert.messageText = "Edit \(filename)"
-                let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 480, height: 300))
-                let tv = NSTextView(frame: scroll.bounds)
-                tv.string = content
-                tv.isVerticallyResizable = true
-                tv.autoresizingMask = [.width]
-                if let c = tv.textContainer { c.widthTracksTextView = true }
-                scroll.documentView = tv
-                scroll.hasVerticalScroller = true
-                alert.accessoryView = scroll
-                let verifyBtn = NSButton(title: "Verify", target: nil, action: nil)
-                verifyBtn.bezelStyle = .rounded
-                verifyBtn.controlSize = .small
-                let saveBtn = NSButton(title: "Save", target: nil, action: nil)
-                saveBtn.bezelStyle = .rounded
-                saveBtn.controlSize = .small
-                saveBtn.isHidden = true
-                let cancelBtn = NSButton(title: "Cancel", target: nil, action: nil)
-                cancelBtn.bezelStyle = .rounded
-                cancelBtn.controlSize = .small
-                let btnRow = NSStackView(views: [verifyBtn, saveBtn, cancelBtn])
-                btnRow.orientation = .horizontal
-                btnRow.spacing = 6
-                btnRow.translatesAutoresizingMaskIntoConstraints = false
-                let container = NSView(frame: NSRect(x: 0, y: 0, width: 480, height: 340))
-                scroll.frame = NSRect(x: 0, y: 40, width: 480, height: 300)
-                container.addSubview(scroll)
-                container.addSubview(btnRow)
-                NSLayoutConstraint.activate([
-                    btnRow.topAnchor.constraint(equalTo: container.topAnchor, constant: 4),
-                    btnRow.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -8),
-                ])
-                alert.accessoryView = container
-
-                verifyBtn.target = self
-                verifyBtn.action = #selector(self.verifyTaskText(_:))
-                saveBtn.target = self
-                saveBtn.action = #selector(self.saveTaskText(_:))
-                cancelBtn.target = self
-                cancelBtn.action = #selector(self.cancelTaskEdit(_:))
-
-                // store context via tags on buttons
-                verifyBtn.tag = 0
-                // use a shared holder
-                self.pendingEditFilename = filename
-                self.pendingEditTextView = tv
-                self.pendingEditSaveButton = saveBtn
-
-                guard let window = self.window else { return }
-                alert.beginSheetModal(for: window) { _ in }
-            }
-        }.resume()
+        let fileURL = localTasksDirectory().appendingPathComponent(filename)
+        let content = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? (task["content"] as? String) ?? ""
+        let alert = NSAlert()
+        alert.messageText = "Edit \(filename) (standalone)"
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 520, height: 320))
+        let tv = NSTextView(frame: scroll.bounds)
+        tv.string = content
+        tv.isEditable = true
+        tv.isVerticallyResizable = true
+        tv.autoresizingMask = [.width]
+        tv.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        if let c = tv.textContainer { c.widthTracksTextView = true }
+        scroll.documentView = tv
+        scroll.hasVerticalScroller = true
+        alert.accessoryView = scroll
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel")
+        guard let window = self.window else { return }
+        alert.beginSheetModal(for: window) { [weak self] resp in
+            guard let self, resp == .alertFirstButtonReturn else { return }
+            try? tv.string.write(to: fileURL, atomically: true, encoding: .utf8)
+            self.fetchTasks()
+        }
     }
 
     private func fetchTasks() {
-        tasksTextView.string = "Loading tasks...\n"
-        guard let url = URL(string: "http://127.0.0.1:8787/api/tasks") else { return }
-        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
-            DispatchQueue.main.async {
-                guard let self else { return }
-                guard let data, let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let tasks = obj["tasks"] as? [[String: Any]] else {
-                    self.tasksTextView.string = "noskill daemon not running on :8787.\nStart: sched serve --port 8787"
-                    return
-                }
-                var lines: [String] = ["noskill scheduled tasks (max 50):", ""]
-                for (i, t) in tasks.enumerated() {
-                    let name = t["name"] as? String ?? "?"
-                    let sched = t["schedule"] as? String ?? "?"
-                    let enabled = t["enabled"] as? Bool ?? false
-                    let status = t["status"] as? String ?? "?"
-                    let next = t["next_run"] as? String ?? "?"
-                    lines.append(String(format: "%2d  %@ %@", i+1, enabled ? "●" : "○", name))
-                    lines.append("   schedule: \(sched)  status: \(status)")
-                    lines.append("   next run: \(next)")
-                    lines.append("")
-                }
-                self.currentTasks = tasks
-                self.currentTaskPage = 0
-                self.buildTaskRows(tasks: tasks)
-                self.tasksTextView.string = lines.joined(separator: "\n")
-            }
-        }.resume()
+        // Standalone baseline: local task files only (no external scheduler/agents).
+        let tasks = loadLocalTasks()
+        var lines: [String] = ["Standalone local tasks (Ollama + browser):", "Dir: \(localTasksDirectory().path)", ""]
+        for (i, t) in tasks.enumerated() {
+            let name = t["name"] as? String ?? "?"
+            let sched = t["schedule"] as? String ?? "-"
+            let enabled = t["enabled"] as? Bool ?? false
+            let status = t["status"] as? String ?? "idle"
+            let model = t["model"] as? String ?? "granite4:3b"
+            lines.append(String(format: "%2d  %@ %@  [%@]  schedule: %@  model: %@", i+1, enabled ? "●" : "○", name, status, sched, model))
+        }
+        if tasks.isEmpty { lines.append("(no tasks yet — use Add tasks to create one locally)") }
+        self.currentTasks = tasks
+        self.currentTaskPage = 0
+        self.buildTaskRows(tasks: tasks)
+        self.tasksTextView.string = lines.joined(separator: "\n")
     }
 
     @objc private func refreshTasksClicked(_ sender: Any?) { fetchTasks() }
 
     @objc private func newTaskClicked(_ sender: Any?) {
         let alert = NSAlert()
-        alert.messageText = "New task name"
+        alert.messageText = "New local task (standalone)"
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
         field.placeholderString = "my-task"
         alert.accessoryView = field
         alert.addButton(withTitle: "Create")
         alert.addButton(withTitle: "Cancel")
         guard let window = self.window else { return }
-        alert.beginSheetModal(for: window) { resp in
-            guard resp == .alertFirstButtonReturn else { return }
+        alert.beginSheetModal(for: window) { [weak self] resp in
+            guard let self, resp == .alertFirstButtonReturn else { return }
             let name = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !name.isEmpty else { return }
-            let filename = name + ".md"
-            let content = "---\ntitle: \(name)\nschedule: \"0 9 * * *\"\nenabled: true\n---\n\nDescribe what this task should do.\n"
-            guard let url = URL(string: "http://127.0.0.1:8787/api/tasks/file") else { return }
-            var req = URLRequest(url: url)
-            req.httpMethod = "POST"
-            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            req.httpBody = try? JSONSerialization.data(withJSONObject: ["filename": filename, "content": content])
-            URLSession.shared.dataTask(with: req) { _, _, _ in
-                DispatchQueue.main.async {
-                    self.fetchTasks()
-                }
-            }.resume()
+            let safe = name.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
+            let filename = safe + ".md"
+            let id = safe
+            let content = """
+            ---
+            id: \(id)
+            name: \(name)
+            schedule: "manual"
+            enabled: true
+            model: granite4:3b
+            ---
+
+            Describe what this task should do. When run, this text is sent to the local Ollama model as the workflow prompt.
+            """
+            let url = self.localTasksDirectory().appendingPathComponent(filename)
+            try? content.write(to: url, atomically: true, encoding: .utf8)
+            self.fetchTasks()
         }
     }
 
@@ -835,18 +931,15 @@ final class LocalChatView: NSView {
         alert.addButton(withTitle: "Delete")
         alert.addButton(withTitle: "Cancel")
         guard let window = self.window else { return }
-        alert.beginSheetModal(for: window) { resp in
-            guard resp == .alertFirstButtonReturn else { return }
+        alert.beginSheetModal(for: window) { [weak self] resp in
+            guard let self, resp == .alertFirstButtonReturn else { return }
             guard let n = Int(field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)),
-                  n >= 1, n <= self.currentTasks.count, n <= 50 else { return }
+                  n >= 1, n <= self.currentTasks.count else { return }
             let task = self.currentTasks[n-1]
             guard let filename = task["filename"] as? String else { return }
-            guard let url = URL(string: "http://127.0.0.1:8787/api/tasks/file/\(filename)") else { return }
-            var req = URLRequest(url: url)
-            req.httpMethod = "DELETE"
-            URLSession.shared.dataTask(with: req) { _, _, _ in
-                DispatchQueue.main.async { self.fetchTasks() }
-            }.resume()
+            let url = self.localTasksDirectory().appendingPathComponent(filename)
+            try? FileManager.default.removeItem(at: url)
+            self.fetchTasks()
         }
     }
 
@@ -859,30 +952,80 @@ final class LocalChatView: NSView {
         alert.addButton(withTitle: "Run")
         alert.addButton(withTitle: "Cancel")
         guard let window = self.window else { return }
-        alert.beginSheetModal(for: window) { resp in
-            guard resp == .alertFirstButtonReturn else { return }
+        alert.beginSheetModal(for: window) { [weak self] resp in
+            guard let self, resp == .alertFirstButtonReturn else { return }
             guard let n = Int(field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)),
-                  n >= 1, n <= self.currentTasks.count, n <= 50 else { return }
-            let task = self.currentTasks[n-1]
-            guard let taskId = task["id"] as? String else { return }
-            guard let url = URL(string: "http://127.0.0.1:8787/api/tasks/\(taskId)/run") else { return }
-            var req = URLRequest(url: url)
-            req.httpMethod = "POST"
-            URLSession.shared.dataTask(with: req) { _, _, _ in
-                DispatchQueue.main.async { self.fetchTasks() }
-            }.resume()
+                  n >= 1, n <= self.currentTasks.count else { return }
+            self.runLocalTask(at: n - 1)
         }
     }
 
     @objc private func runAllTasksClicked(_ sender: Any?) {
-        for task in currentTasks {
-            guard let taskId = task["id"] as? String else { continue }
-            guard let url = URL(string: "http://127.0.0.1:8787/api/tasks/\(taskId)/run") else { continue }
-            var req = URLRequest(url: url)
-            req.httpMethod = "POST"
-            URLSession.shared.dataTask(with: req) { _, _, _ in }.resume()
+        for i in 0..<currentTasks.count { runLocalTask(at: i) }
+    }
+
+    // Standalone: local tasks only (Ollama + browser, no external scheduler/agents).
+    private func localTasksDirectory() -> URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("FeatherA/tasks", isDirectory: true)
+        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        return base
+    }
+
+    private func localRunsDirectory() -> URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("FeatherA/runs", isDirectory: true)
+        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        return base
+    }
+
+    private func parseFrontmatter(_ content: String) -> [String: String] {
+        var out: [String: String] = [:]
+        let lines = content.components(separatedBy: .newlines)
+        guard lines.first?.trimmingCharacters(in: .whitespaces) == "---" else { return out }
+        for line in lines.dropFirst() {
+            let t = line.trimmingCharacters(in: .whitespaces)
+            if t == "---" { break }
+            if let idx = t.firstIndex(of: ":") {
+                let k = String(t[..<idx]).trimmingCharacters(in: .whitespaces)
+                var v = String(t[t.index(after: idx)...]).trimmingCharacters(in: .whitespaces)
+                if v.hasPrefix("\"") && v.hasSuffix("\"") && v.count >= 2 { v = String(v.dropFirst().dropLast()) }
+                out[k] = v
+            }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.fetchTasks() }
+        return out
+    }
+
+    private func loadLocalTasks() -> [[String: Any]] {
+        let dir = localTasksDirectory()
+        let fm = FileManager.default
+        let files = (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles])) ?? []
+        let md = files.filter { $0.pathExtension == "md" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+        var tasks: [[String: Any]] = []
+        for (i, url) in md.enumerated() {
+            let filename = url.lastPathComponent
+            let content = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+            let fmatter = parseFrontmatter(content)
+            let id = fmatter["id"] ?? filename.replacingOccurrences(of: ".md", with: "")
+            let name = fmatter["name"] ?? id
+            let schedule = fmatter["schedule"] ?? "-"
+            let enabled = (fmatter["enabled"] ?? "true").lowercased() != "false"
+            let model = fmatter["model"] ?? "granite4:3b"
+            tasks.append([
+                "number": i + 1,
+                "id": id,
+                "name": name,
+                "filename": filename,
+                "schedule": schedule,
+                "enabled": enabled,
+                "status": "idle",
+                "last_model": model,
+                "model": model,
+                "next_run": "-",
+                "content": content,
+            ])
+        }
+        return tasks
     }
 
     private func taskBackupsDirectory() -> URL {
@@ -912,52 +1055,33 @@ final class LocalChatView: NSView {
     }
 
     @objc private func saveTasksClicked(_ sender: Any?) {
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            guard let listURL = URL(string: "http://127.0.0.1:8787/api/tasks") else { return }
-            do {
-                let (data, _) = try await URLSession.shared.data(from: listURL)
-                guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let tasks = obj["tasks"] as? [[String: Any]] else {
-                    self.showTaskAlert("Save failed", "Could not read tasks from scheduler.")
-                    return
-                }
-                var files: [String: String] = [:]
-                var missing: [String] = []
-                for t in tasks {
-                    guard let filename = t["filename"] as? String,
-                          let fileURL = URL(string: "http://127.0.0.1:8787/api/tasks/file/\(filename)") else { continue }
-                    do {
-                        let (fd, _) = try await URLSession.shared.data(from: fileURL)
-                        if let fo = try JSONSerialization.jsonObject(with: fd) as? [String: Any],
-                           let content = fo["content"] as? String {
-                            files[filename] = content
-                        } else {
-                            missing.append(filename)
-                        }
-                    } catch {
-                        missing.append(filename)
-                    }
-                }
-                let formatter = ISO8601DateFormatter()
-                let savedAt = formatter.string(from: Date())
-                let backup: [String: Any] = ["version": 1, "saved_at": savedAt, "tasks": tasks, "files": files]
-                let out = try JSONSerialization.data(withJSONObject: backup, options: [.prettyPrinted, .sortedKeys])
-                let ts = savedAt.replacingOccurrences(of: ":", with: "-")
-                let dir = self.taskBackupsDirectory()
-                let hist = dir.appendingPathComponent("saved_tasks_\(ts).json")
-                try out.write(to: hist, options: .atomic)
-                let latest = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-                    .appendingPathComponent("FeatherA/saved_tasks.json")
-                try? FileManager.default.createDirectory(at: latest.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try out.write(to: latest, options: .atomic)
-                var msg = "Saved \(tasks.count) task(s), \(files.count) file(s) with content."
-                if !missing.isEmpty { msg += "\nMissing content for: \(missing.joined(separator: ", "))" }
-                msg += "\nBackup: \(hist.lastPathComponent)"
-                self.showTaskAlert("Tasks saved", msg)
-            } catch {
-                self.showTaskAlert("Save failed", "\(error.localizedDescription)\nIs the scheduler running on :8787?")
+        // Standalone: back up local task files (no external scheduler).
+        let tasks = loadLocalTasks()
+        var files: [String: String] = [:]
+        for t in tasks {
+            if let filename = t["filename"] as? String, let content = t["content"] as? String {
+                files[filename] = content
+            } else if let filename = t["filename"] as? String {
+                let url = localTasksDirectory().appendingPathComponent(filename)
+                if let c = try? String(contentsOf: url, encoding: .utf8) { files[filename] = c }
             }
+        }
+        let formatter = ISO8601DateFormatter()
+        let savedAt = formatter.string(from: Date())
+        let backup: [String: Any] = ["version": 2, "standalone": true, "saved_at": savedAt, "tasks": tasks, "files": files]
+        do {
+            let out = try JSONSerialization.data(withJSONObject: backup, options: [.prettyPrinted, .sortedKeys])
+            let ts = savedAt.replacingOccurrences(of: ":", with: "-")
+            let dir = taskBackupsDirectory()
+            let hist = dir.appendingPathComponent("saved_tasks_\(ts).json")
+            try out.write(to: hist, options: .atomic)
+            let latest = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("FeatherA/saved_tasks.json")
+            try? FileManager.default.createDirectory(at: latest.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try out.write(to: latest, options: .atomic)
+            showTaskAlert("Tasks saved", "Saved \(tasks.count) local task(s), \(files.count) file(s).\nBackup: \(hist.lastPathComponent)")
+        } catch {
+            showTaskAlert("Save failed", error.localizedDescription)
         }
     }
 
@@ -993,54 +1117,37 @@ final class LocalChatView: NSView {
     }
 
     private func restoreTasks(from src: URL) {
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            do {
-                let data = try Data(contentsOf: src)
-                guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let tasks = obj["tasks"] as? [[String: Any]] else {
-                    self.showTaskAlert("Restore failed", "Backup format not recognized.")
-                    return
-                }
-                let files = obj["files"] as? [String: String] ?? [:]
-                var ok = 0
-                var failed: [String] = []
-                for t in tasks {
-                    guard let filename = t["filename"] as? String else { continue }
-                    var content = files[filename]
-                    if content == nil {
-                        // legacy fallback: try to fetch from scheduler
-                        if let fileURL = URL(string: "http://127.0.0.1:8787/api/tasks/file/\(filename)"),
-                           let (fd, _) = try? await URLSession.shared.data(from: fileURL),
-                           let fo = try? JSONSerialization.jsonObject(with: fd) as? [String: Any] {
-                            content = fo["content"] as? String
-                        }
-                    }
-                    guard let content else { failed.append(filename); continue }
-                    guard let createURL = URL(string: "http://127.0.0.1:8787/api/tasks/file") else { failed.append(filename); continue }
-                    var req = URLRequest(url: createURL)
-                    req.httpMethod = "POST"
-                    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                    req.httpBody = try JSONSerialization.data(withJSONObject: ["filename": filename, "content": content])
+        // Standalone: restore task files locally (no external scheduler).
+        do {
+            let data = try Data(contentsOf: src)
+            guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let tasks = obj["tasks"] as? [[String: Any]] else {
+                showTaskAlert("Restore failed", "Backup format not recognized.")
+                return
+            }
+            let files = obj["files"] as? [String: String] ?? [:]
+            var ok = 0
+            var failed: [String] = []
+            let dir = localTasksDirectory()
+            for t in tasks {
+                guard let filename = t["filename"] as? String else { continue }
+                if let content = files[filename] {
                     do {
-                        let (_, resp) = try await URLSession.shared.data(for: req)
-                        if let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) || http.statusCode == 409 {
-                            ok += 1
-                        } else {
-                            failed.append(filename)
-                        }
+                        try content.write(to: dir.appendingPathComponent(filename), atomically: true, encoding: .utf8)
+                        ok += 1
                     } catch {
                         failed.append(filename)
                     }
+                } else {
+                    failed.append(filename)
                 }
-                self.fetchTasks()
-                var msg = "Restored \(ok)/\(tasks.count) task(s) from \(src.lastPathComponent)."
-                if !files.isEmpty { msg += "\nUsed embedded file contents from backup." }
-                if !failed.isEmpty { msg += "\nFailed: \(failed.joined(separator: ", "))" }
-                self.showTaskAlert("Restore complete", msg)
-            } catch {
-                self.showTaskAlert("Restore failed", error.localizedDescription)
             }
+            fetchTasks()
+            var msg = "Restored \(ok)/\(tasks.count) local task(s) from \(src.lastPathComponent)."
+            if !failed.isEmpty { msg += "\nMissing/failed content: \(failed.joined(separator: ", "))" }
+            showTaskAlert("Restore complete", msg)
+        } catch {
+            showTaskAlert("Restore failed", error.localizedDescription)
         }
     }
 

@@ -161,6 +161,34 @@ struct LocalModel {
         return try Self.answer(from: data)
     }
 
+    /// Standalone workflow/agent run: send a prompt to a local Ollama model (no external services).
+    func runPrompt(_ prompt: String, model: String? = nil) async throws -> String {
+        guard let base = URL(string: config.ollama), Self.isLocal(base) else {
+            throw LocalModelError.notLocalhost(config.ollama)
+        }
+        var request = URLRequest(url: base.appendingPathComponent("api/chat"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 300
+        let useModel = (model?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false) ? model! : config.answerModel
+        let body: [String: Any] = [
+            "model": useModel,
+            "stream": false,
+            "messages": [
+                ["role": "system", "content": "You are a helpful local agent running inside FeatherA. Follow the task instructions. Be concise and factual."],
+                ["role": "user", "content": prompt],
+            ],
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let data: Data
+        do {
+            (data, _) = try await URLSession.shared.data(for: request)
+        } catch let error as URLError where error.code == .cannotConnectToHost {
+            throw LocalModelError.ollamaUnavailable
+        }
+        return try Self.answer(from: data)
+    }
+
     static func answer(from data: Data) throws -> String {
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw LocalModelError.badResponse
