@@ -12,11 +12,36 @@ enum LocalModelPrompt {
     }
 
     private static func checkThenAsk(pageText: String, window: NSWindow) async {
-        guard await LocalModel(config: .load()).isRunning() else {
+        let model = LocalModel(config: .load())
+        guard await model.isRunning() else {
             showNotRunning(window: window)
             return
         }
+        guard await model.modelInstalled() else {
+            offerDownload(model: model, pageText: pageText, window: window)
+            return
+        }
         askQuestion(pageText: pageText, window: window)
+    }
+
+    private static func offerDownload(model: LocalModel, pageText: String, window: NSWindow) {
+        let alert = NSAlert()
+        alert.messageText = "Download \(model.config.model)?"
+        alert.informativeText = "Feather needs this small model to answer. Ollama downloads it from its library and it then runs on this Mac."
+        alert.addButton(withTitle: "Download")
+        alert.addButton(withTitle: "Cancel")
+        alert.beginSheetModal(for: window) { response in
+            guard response == .alertFirstButtonReturn else { return }
+            Task { @MainActor in
+                do {
+                    try await model.pull()
+                    askQuestion(pageText: pageText, window: window)
+                } catch {
+                    show((error as? LocalizedError)?.errorDescription ?? error.localizedDescription,
+                         title: "The download didn't finish", window: window)
+                }
+            }
+        }
     }
 
     private static func showNotRunning(window: NSWindow) {

@@ -99,6 +99,47 @@ struct LocalModel {
         return (result.1 as? HTTPURLResponse)?.statusCode == 200
     }
 
+    static func hasModel(named name: String, inTags data: Data) -> Bool {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let models = object["models"] as? [[String: Any]] else {
+            return false
+        }
+        return models.contains { ($0["name"] as? String) == name }
+    }
+
+    /// True when the configured model is already on this Mac (asks Ollama's model list).
+    func modelInstalled() async -> Bool {
+        guard let base = URL(string: config.ollama), Self.isLocal(base),
+              let result = try? await URLSession.shared.data(from: base.appendingPathComponent("api/tags")) else {
+            return false
+        }
+        return Self.hasModel(named: config.model, inTags: result.0)
+    }
+
+    func pullRequest() throws -> URLRequest {
+        guard let base = URL(string: config.ollama), Self.isLocal(base) else {
+            throw LocalModelError.notLocalhost(config.ollama)
+        }
+        var request = URLRequest(url: base.appendingPathComponent("api/pull"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 1800
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["model": config.model, "stream": false])
+        return request
+    }
+
+    /// Downloads the configured model through Ollama. Only called after the user agrees.
+    func pull() async throws {
+        let (data, response) = try await URLSession.shared.data(for: try pullRequest())
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+            throw LocalModelError.modelError("the download didn't finish")
+        }
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let message = object["error"] as? String {
+            throw LocalModelError.modelError(message)
+        }
+    }
+
     func ask(question: String, pageText: String) async throws -> String {
         let request = try chatRequest(question: question, pageText: pageText)
         let data: Data

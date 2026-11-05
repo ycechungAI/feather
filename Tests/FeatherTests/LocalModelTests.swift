@@ -64,6 +64,23 @@ struct LocalModelRequestTests {
         }
     }
 
+    @Test func findsTheConfiguredModelByExactName() {
+        let tags = Data(#"{"models":[{"name":"gemma3:1b"},{"name":"granite4:3b"}]}"#.utf8)
+        #expect(LocalModel.hasModel(named: "gemma3:1b", inTags: tags))
+        #expect(!LocalModel.hasModel(named: "gemma3", inTags: tags))
+        #expect(!LocalModel.hasModel(named: "llama3.2:1b", inTags: tags))
+    }
+
+    @Test func pullAsksOllamaForTheConfiguredModelWithoutStreaming() throws {
+        let request = try LocalModel(config: ServicesConfig()).pullRequest()
+        #expect(request.url?.absoluteString == "http://127.0.0.1:11434/api/pull")
+        #expect(request.timeoutInterval == 1800)
+        let data = try #require(request.httpBody)
+        let body = try #require(try? JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(body["model"] as? String == "gemma3:1b")
+        #expect(body["stream"] as? Bool == false)
+    }
+
     @Test func pageTextIsClipped() {
         #expect(LocalModel.clip("abcdef", limit: 3) == "abc")
         #expect(LocalModel.clip("ab", limit: 3) == "ab")
