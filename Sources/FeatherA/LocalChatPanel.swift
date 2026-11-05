@@ -464,6 +464,9 @@ final class LocalChatView: NSView {
             if sender.selectedSegment == 1 {
                 fetchTasks()
             }
+            if sender.selectedSegment == 2 {
+                fetchResultsTasks()
+            }
         } else {
             if sender.selectedSegment == 0 {
                 // toggle back
@@ -801,6 +804,29 @@ final class LocalChatView: NSView {
             } else {
                 DispatchQueue.main.async {
                     self?.fetchLatestResult(taskId: taskId)
+                }
+            }
+        }.resume()
+    }
+
+    private func fetchResultsTasks() {
+        guard let url = URL(string: "http://127.0.0.1:8787/api/tasks") else { return }
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+            guard let data, let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let tasks = obj["tasks"] as? [[String: Any]] else { return }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.currentTasksForResults = tasks
+                self.taskPicker.removeAllItems()
+                for (i, t) in tasks.enumerated() {
+                    self.taskPicker.addItem(withTitle: "\(i+1). \(t["name"] as? String ?? "?")")
+                }
+                if let tid = self.currentResultTaskId, let idx = tasks.firstIndex(where: { ($0["id"] as? String) == tid }) {
+                    self.taskPicker.selectItem(at: idx)
+                    self.loadRunsForTask(taskId: tid)
+                } else if let first = tasks.first, let tid = first["id"] as? String {
+                    self.taskPicker.selectItem(at: 0)
+                    self.loadRunsForTask(taskId: tid)
                 }
             }
         }.resume()
