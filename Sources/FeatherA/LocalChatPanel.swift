@@ -353,7 +353,7 @@ final class LocalChatView: NSView {
             headerView.topAnchor.constraint(equalTo: topAnchor),
             headerView.leadingAnchor.constraint(equalTo: leadingAnchor),
             headerView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            headerView.heightAnchor.constraint(equalToConstant: 30),
+            headerView.heightAnchor.constraint(equalToConstant: 20),
 
             iconView.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: 4),
             iconView.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
