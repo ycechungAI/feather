@@ -889,8 +889,13 @@ final class LocalChatView: NSView {
             Describe what this task should do. When run, this text is sent to the local Ollama model as the workflow prompt.
             """
             let url = self.localTasksDirectory().appendingPathComponent(filename)
-            try? content.write(to: url, atomically: true, encoding: .utf8)
-            self.fetchTasks()
+            do {
+                try content.write(to: url, atomically: true, encoding: .utf8)
+                self.fetchTasks()
+                self.appendLog("[tasks] Created \(filename) in \(self.localTasksDirectory().path)")
+            } catch {
+                self.showTaskAlert("Create failed", "Could not save \(filename): \(error.localizedDescription)")
+            }
         }
     }
 
