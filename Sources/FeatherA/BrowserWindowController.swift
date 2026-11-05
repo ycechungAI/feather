@@ -22,6 +22,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
     private var forwardButton: NSButton!
     private var reloadButton: NSButton!
     private var homeButton: NSButton!
+    private var askButton: NSButton!
     private var shieldButton: NSButton!
     private var newTabButton: NSButton!
     private var starButton: NSButton!
@@ -645,6 +646,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         static let forward = NSToolbarItem.Identifier("forward")
         static let reload = NSToolbarItem.Identifier("reload")
         static let home = NSToolbarItem.Identifier("home")
+        static let ask = NSToolbarItem.Identifier("ask")
         static let address = NSToolbarItem.Identifier("address")
         static let shield = NSToolbarItem.Identifier("shield")
         static let newTab = NSToolbarItem.Identifier("newTab")
@@ -660,6 +662,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         forwardButton = toolbarButton("chevron.right", "Forward", #selector(navigateForward(_:)))
         reloadButton = toolbarButton("arrow.clockwise", "Reload", #selector(reloadPage(_:)))
         homeButton = toolbarButton("house", "Home", #selector(goHome(_:)))
+        askButton = toolbarButton("brain", "Ask AI (local model)", #selector(askLocalModel(_:)))
         shieldButton = toolbarButton("shield.lefthalf.filled", "Shields", #selector(showShieldsMenu(_:)))
         downloadsButton = toolbarButton("arrow.down.circle", "Downloads (⌥⌘L)", #selector(AppDelegate.showDownloads(_:)))
         downloadsButton.target = NSApp.delegate
@@ -710,7 +713,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [Item.back, Item.forward, Item.reload, Item.home, Item.video, .flexibleSpace, Item.address, Item.star, .flexibleSpace, Item.downloads, Item.pins, Item.extensions, Item.shield]
+        [Item.back, Item.forward, Item.reload, Item.home, Item.ask, Item.video, .flexibleSpace, Item.address, Item.star, .flexibleSpace, Item.downloads, Item.pins, Item.extensions, Item.shield]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -725,6 +728,8 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         case Item.forward: item.view = forwardButton; item.label = "Forward"
         case Item.reload: item.view = reloadButton; item.label = "Reload"
         case Item.home: item.view = homeButton; item.label = "Home"
+        case Item.ask:
+            item.view = askButton; item.label = "Ask AI (local model)"; item.visibilityPriority = .high
         case Item.shield: item.view = shieldButton; item.label = "Shields"
         case Item.pins: item.view = extensionPins; item.label = "Pinned Extensions"
         case Item.extensions: item.view = extensionsButton; item.label = "Extensions"
