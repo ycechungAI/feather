@@ -88,6 +88,8 @@ final class LocalChatView: NSView {
         logsToggle.title = ">>"
         logsToggle.bezelStyle = .recessed
         logsToggle.controlSize = .mini
+        logsToggle.contentTintColor = .white
+        logsToggle.attributedTitle = NSAttributedString(string: ">>", attributes: [.foregroundColor: NSColor.white, .font: NSFont.systemFont(ofSize: 10)])
         logsToggle.target = self
         logsToggle.action = #selector(toggleLogsMode(_:))
         tabControl.selectedSegment = 0
@@ -512,14 +514,14 @@ final class LocalChatView: NSView {
         logsMode = !logsMode
         if logsMode {
             tabControl.isHidden = true
-            logsToggle.title = "<<"
+            logsToggle.attributedTitle = NSAttributedString(string: "<<", attributes: [.foregroundColor: NSColor.white, .font: NSFont.systemFont(ofSize: 10)])
             chatContainer.isHidden = true
             tasksContainer.isHidden = true
             resultsContainer.isHidden = true
             logsContainer.isHidden = false
         } else {
             tabControl.isHidden = false
-            logsToggle.title = ">>"
+            logsToggle.attributedTitle = NSAttributedString(string: ">>", attributes: [.foregroundColor: NSColor.white, .font: NSFont.systemFont(ofSize: 10)])
             chatContainer.isHidden = tabControl.selectedSegment != 0
             tasksContainer.isHidden = tabControl.selectedSegment != 1
             resultsContainer.isHidden = tabControl.selectedSegment != 2
@@ -602,7 +604,6 @@ final class LocalChatView: NSView {
 
     private func buildTaskRows(tasks: [[String: Any]]) {
         for v in taskRowsStack.arrangedSubviews { taskRowsStack.removeArrangedSubview(v); v.removeFromSuperview() }
-        let twoColumns = (panelPosition == "bottom")
         let makeRow: (Int, [String: Any]) -> NSStackView = { i, t in
             let name = t["name"] as? String ?? "?"
             let enabled = t["enabled"] as? Bool ?? false
@@ -613,19 +614,14 @@ final class LocalChatView: NSView {
             row.orientation = .horizontal
             row.spacing = 6
             row.alignment = .centerY
-            let rowColor: NSColor
-            switch status {
-            case "running": rowColor = NSColor(calibratedRed: 1.0, green: 1.0, blue: 0.2, alpha: 1.0)
-            case "failed": rowColor = NSColor(calibratedRed: 1.0, green: 0.2, blue: 0.2, alpha: 1.0)
-            default: rowColor = NSColor(calibratedRed: 0.2, green: 1.0, blue: 0.2, alpha: 1.0)
-            }
-            let green = NSColor(calibratedRed: 0.2, green: 1.0, blue: 0.2, alpha: 1.0)
-            let attr = NSMutableAttributedString()
-            let numStr = String(format: "%2d", i+1)
-            attr.append(NSAttributedString(string: numStr, attributes: [.foregroundColor: green, .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)]))
-            attr.append(NSAttributedString(string: String(format: "  %@ %@   %@ · %@ · %@", enabled ? "●" : "○", name, sched, status, next), attributes: [.foregroundColor: rowColor, .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)]))
-            let label = NSTextField(labelWithString: "")
-            label.attributedStringValue = attr
+            let numLabel = NSTextField(labelWithString: String(format: "%2d", i+1))
+            numLabel.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+            numLabel.alignment = .left
+            numLabel.textColor = NSColor(calibratedRed: 0.2, green: 1.0, blue: 0.2, alpha: 1.0)
+            numLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+            numLabel.setContentHuggingPriority(.required, for: .horizontal)
+            let label = NSTextField(labelWithString: String(format: "%@ %@   %@ · %@ · %@", enabled ? "●" : "○", name, sched, status, next))
+            label.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
             if self.panelPosition == "bottom" {
                 label.lineBreakMode = .byWordWrapping
                 label.maximumNumberOfLines = 0
@@ -633,6 +629,13 @@ final class LocalChatView: NSView {
                 label.lineBreakMode = .byTruncatingTail
                 label.maximumNumberOfLines = 1
             }
+            let rowColor: NSColor
+            switch status {
+            case "running": rowColor = NSColor(calibratedRed: 1.0, green: 1.0, blue: 0.2, alpha: 1.0)
+            case "failed": rowColor = NSColor(calibratedRed: 1.0, green: 0.2, blue: 0.2, alpha: 1.0)
+            default: rowColor = NSColor(calibratedRed: 0.2, green: 1.0, blue: 0.2, alpha: 1.0)
+            }
+            label.textColor = rowColor
             label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             let editBtn = NSButton(title: "Edit", target: self, action: #selector(self.editTaskByIndex(_:)))
             editBtn.bezelStyle = .recessed
@@ -646,44 +649,35 @@ final class LocalChatView: NSView {
             runBtn.setContentHuggingPriority(.required, for: .horizontal)
             let spacer = NSView()
             spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            row.addArrangedSubview(numLabel)
             row.addArrangedSubview(label)
             row.addArrangedSubview(spacer)
             row.addArrangedSubview(editBtn)
             row.addArrangedSubview(runBtn)
             return row
         }
-        if twoColumns {
-            let width = self.bounds.width > 0 ? self.bounds.width : 1280
-            let ncols = 1
+        let availableWidth = self.bounds.width > 0 ? self.bounds.width : (panelPosition == "bottom" ? 1280 : 400)
+        let ncols = min(3, max(1, Int(availableWidth / 360)))
+        if ncols > 1 {
             var cols: [NSStackView] = (0..<ncols).map { _ in
                 let st = NSStackView()
                 st.orientation = .vertical
                 st.spacing = 2
                 st.alignment = .leading
+                st.setContentHuggingPriority(.defaultLow, for: .horizontal)
                 return st
             }
-            var padded = tasks
-            while padded.count < ncols * 2 { padded.append([:]) }
-            for (i, t) in padded.enumerated() {
-                if t.isEmpty {
-                    cols[i % ncols].addArrangedSubview(NSView())
-                    continue
-                }
+            for (i, t) in tasks.enumerated() {
                 cols[i % ncols].addArrangedSubview(makeRow(i, t))
             }
             let container = NSStackView(views: cols)
             container.orientation = .horizontal
             container.spacing = 8
             container.alignment = .top
+            container.distribution = .fillEqually
             taskRowsStack.addArrangedSubview(container)
         } else {
-            var padded = tasks
-            while padded.count < 3 { padded.append([:]) }
-            for (i, t) in padded.enumerated() {
-                if t.isEmpty {
-                    taskRowsStack.addArrangedSubview(NSView())
-                    continue
-                }
+            for (i, t) in tasks.enumerated() {
                 taskRowsStack.addArrangedSubview(makeRow(i, t))
             }
         }
@@ -1101,7 +1095,7 @@ final class LocalChatView: NSView {
                 if self.logsMode {
                     self.logsMode = false
                     self.tabControl.isHidden = false
-                    self.logsToggle.title = ">>"
+                    self.logsToggle.attributedTitle = NSAttributedString(string: ">>", attributes: [.foregroundColor: NSColor.white, .font: NSFont.systemFont(ofSize: 10)])
                 }
                 self.tabControl.selectedSegment = 2
                 self.tabChanged(self.tabControl)
