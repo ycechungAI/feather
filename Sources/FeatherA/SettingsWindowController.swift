@@ -16,6 +16,9 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private var restore: NSButton!
     private var inspector: NSButton!
     private var saveChatHistoryBox: NSButton!
+    private var aiEnabledBox: NSButton!
+    private var aiTasksBox: NSButton!
+    private var aiAgentsBox: NSButton!
     private var askPanelOpenByDefaultBox: NSButton!
     private var showHomeButtonBox: NSButton!
     private var clearChatHistoryButton: NSButton!
@@ -94,6 +97,9 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         restore = checkbox("Reopen tabs from last time when FeatherA starts", #selector(toggled(_:)))
         inspector = checkbox("Show Inspect Element (Web Inspector, with the console)", #selector(toggled(_:)))
         saveChatHistoryBox = checkbox("Save chat history between sessions", #selector(toggled(_:)))
+        aiEnabledBox = checkbox("Enable AI features (off by default; uses local Ollama)", #selector(toggled(_:)))
+        aiTasksBox = checkbox("Tasks tab", #selector(toggled(_:)))
+        aiAgentsBox = checkbox("Agents tab", #selector(toggled(_:)))
         askPanelOpenByDefaultBox = checkbox("Open Ask AI panel by default", #selector(toggled(_:)))
         showHomeButtonBox = checkbox("Show Home button in toolbar (off by default)", #selector(toggled(_:)))
         clearChatHistoryButton = NSButton(title: "Clear chat history", target: self, action: #selector(clearChatHistoryClicked(_:)))
@@ -171,8 +177,11 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             [label("Default browser:"), defaultBox],
             [label("Developer:"), inspectorBox],
             [label("Chat history:"), chatHistoryBox],
-            [label("Ask AI:"), askPanelOpenByDefaultBox],
-            [label("Ask AI panel:"), askPosition],
+            [label("AI:"), aiEnabledBox],
+            [NSGridCell.emptyContentView, aiTasksBox],
+            [NSGridCell.emptyContentView, aiAgentsBox],
+            [NSGridCell.emptyContentView, askPanelOpenByDefaultBox],
+            [label("AI panel:"), askPosition],
         ])
         grid.column(at: 0).xPlacement = .trailing
         grid.rowAlignment = .firstBaseline
@@ -237,6 +246,11 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         restore.state = Settings.restoreSession ? .on : .off
         inspector.state = Settings.webInspector ? .on : .off
         saveChatHistoryBox.state = Settings.saveChatHistory ? .on : .off
+        aiEnabledBox.state = Settings.aiEnabled ? .on : .off
+        aiTasksBox.state = Settings.aiTasksEnabled ? .on : .off
+        aiAgentsBox.state = Settings.aiAgentsEnabled ? .on : .off
+        aiTasksBox.isEnabled = Settings.aiEnabled
+        aiAgentsBox.isEnabled = Settings.aiEnabled
         askPanelOpenByDefaultBox.state = Settings.askPanelOpenByDefault ? .on : .off
         showHomeButtonBox.state = Settings.showHomeButton ? .on : .off
         exceptions.reloadData()
@@ -326,6 +340,15 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         case restore: Settings.restoreSession = on
         case saveChatHistoryBox:
             Settings.saveChatHistory = on
+        case aiEnabledBox:
+            Settings.aiEnabled = on
+            aiTasksBox.isEnabled = on
+            aiAgentsBox.isEnabled = on
+            if on { checkOllamaAndPromptModels() }
+        case aiTasksBox:
+            Settings.aiTasksEnabled = on
+        case aiAgentsBox:
+            Settings.aiAgentsEnabled = on
         case askPanelOpenByDefaultBox:
             Settings.askPanelOpenByDefault = on
         case showHomeButtonBox:
@@ -346,6 +369,59 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         default: break
         }
         NotificationCenter.default.post(name: Settings.changed, object: nil)
+    }
+
+    private func checkOllamaAndPromptModels() {
+        let config = ServicesConfig.load()
+        guard let base = URL(string: config.ollama) else { return }
+        Task { @MainActor [weak self] in
+            guard let self, let window = self.window else { return }
+            // detect Ollama
+            var ollamaOK = false
+            var installed: [String] = []
+            if let tagsURL = URL(string: base.absoluteString + "/api/tags"),
+               let (data, resp) = try? await URLSession.shared.data(from: tagsURL),
+               (resp as? HTTPURLResponse)?.statusCode == 200,
+               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let models = obj["models"] as? [[String: Any]] {
+                ollamaOK = true
+                installed = models.compactMap { $0["name"] as? String }
+            } else if let verURL = URL(string: base.absoluteString + "/api/version"),
+                      let (_, resp) = try? await URLSession.shared.data(from: verURL),
+                      (resp as? HTTPURLResponse)?.statusCode == 200 {
+                ollamaOK = true
+            }
+            if !ollamaOK {
+                let a = NSAlert()
+                a.messageText = "Ollama not detected"
+                a.informativeText = "AI features use local Ollama on \(config.ollama).\n\nInstall Ollama from https://ollama.com, start it, then enable AI again or pull the models."
+                a.addButton(withTitle: "Open ollama.com")
+                a.addButton(withTitle: "OK")
+                a.beginSheetModal(for: window) { resp in
+                    if resp == .alertFirstButtonReturn, let u = URL(string: "https://ollama.com") {
+                        NSWorkspace.shared.open(u)
+                    }
+                }
+                return
+            }
+            let wanted = [config.routerModel, config.answerModel, config.basicModel]
+            let missing = wanted.filter { w in !installed.contains(where: { $0 == w || $0.hasPrefix(w.split(separator: ":").first.map(String.init) ?? w) }) }
+            guard !missing.isEmpty else { return }
+            let a = NSAlert()
+            a.messageText = "Pull recommended Ollama models?"
+            a.informativeText = "Missing recommended models for FeatherA AI:\n\(missing.map { "• \($0)" }.joined(separator: "\n"))\n\nRun in Terminal:\n\(missing.map { "ollama pull \($0)" }.joined(separator: "\n"))"
+            a.addButton(withTitle: "Copy commands")
+            a.addButton(withTitle: "Open Ollama library")
+            a.addButton(withTitle: "Later")
+            a.beginSheetModal(for: window) { resp in
+                if resp == .alertFirstButtonReturn {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(missing.map { "ollama pull \($0)" }.joined(separator: "\n"), forType: .string)
+                } else if resp == .alertSecondButtonReturn, let u = URL(string: "https://ollama.com/library") {
+                    NSWorkspace.shared.open(u)
+                }
+            }
+        }
     }
 
     @objc private func exceptionSelected(_ sender: Any?) {

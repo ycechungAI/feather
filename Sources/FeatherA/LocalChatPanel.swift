@@ -46,6 +46,7 @@ final class LocalChatView: NSView {
     private var currentTasks: [[String: Any]] = []
     private var scheduleTimer: Timer?
     private var lastAutoRun: [String: Date] = [:]
+    private var tabLabels: [String] = ["Ask"]
     private let chatScrollView = NSScrollView()
     private let chatTextView = NSTextView()
     private let inputRow = NSView()
@@ -86,10 +87,6 @@ final class LocalChatView: NSView {
         nameLabel.textColor = NSColor.white
 
         tabControl.translatesAutoresizingMaskIntoConstraints = false
-        tabControl.segmentCount = 3
-        tabControl.setLabel("Ask", forSegment: 0)
-        tabControl.setLabel("Tasks", forSegment: 1)
-        tabControl.setLabel("Results", forSegment: 2)
         logsToggle.translatesAutoresizingMaskIntoConstraints = false
         logsToggle.title = ">>"
         logsToggle.bezelStyle = .recessed
@@ -104,9 +101,10 @@ final class LocalChatView: NSView {
         tabControl.segmentStyle = .texturedSquare
         tabControl.appearance = NSAppearance(named: .darkAqua)
 
-        tabControl.segmentCount = 1
-        tabControl.setLabel("Ask", forSegment: 0)
-        tabControl.selectedSegment = 0
+        refreshTabsFromSettings()
+        NotificationCenter.default.addObserver(forName: Settings.changed, object: nil, queue: .main) { [weak self] _ in
+            self?.refreshTabsFromSettings()
+        }
 
         headerView.addSubview(iconView)
         headerView.addSubview(nameLabel)
@@ -514,97 +512,66 @@ final class LocalChatView: NSView {
         }
     }
 
-    private func updateAgentsToggleTitle() {
-        let title = agentsMode ? "A" : "A"
-        let alpha: CGFloat = agentsMode ? 1.0 : 0.55
-        agentsToggle.attributedTitle = NSAttributedString(string: title, attributes: [
-            .foregroundColor: NSColor.white.withAlphaComponent(alpha),
-            .font: NSFont.systemFont(ofSize: 10, weight: agentsMode ? .bold : .regular)
-        ])
-    }
+    private func updateAgentsToggleTitle() {}
 
     private func applyAgentsMode() {
-        if agentsMode {
-            let selected = min(max(tabControl.selectedSegment, 0), 2)
-            tabControl.segmentCount = 3
-            tabControl.setLabel("Ask", forSegment: 0)
-            tabControl.setLabel("Tasks", forSegment: 1)
-            tabControl.setLabel("Results", forSegment: 2)
-            tabControl.selectedSegment = selected == 0 ? 0 : selected
-            startBasicScheduler()
-        } else {
-            tabControl.segmentCount = 1
-            tabControl.setLabel("Ask", forSegment: 0)
-            tabControl.selectedSegment = 0
-            tasksContainer.isHidden = true
-            resultsContainer.isHidden = true
-            if !logsMode { chatContainer.isHidden = false }
-            stopBasicScheduler()
-        }
-        updateAgentsToggleTitle()
+        // Tabs are always available: Ask, Agents, Tasks, Results, Logs.
+        if agentsMode { startBasicScheduler() } else { stopBasicScheduler() }
     }
 
     @objc private func toggleAgentsMode(_ sender: Any?) {
         agentsMode.toggle()
-        applyAgentsMode()
-        if agentsMode, tabControl.selectedSegment == 1 { fetchTasks() }
+        if agentsMode {
+            startBasicScheduler()
+            tabControl.selectedSegment = 1
+            tabChanged(tabControl)
+        } else {
+            stopBasicScheduler()
+        }
     }
 
     @objc func toggleLogsMode(_ sender: Any?) {
-        logsMode = !logsMode
-        if logsMode {
-            tabControl.isHidden = true
-            logsToggle.attributedTitle = NSAttributedString(string: "<<", attributes: [.foregroundColor: NSColor.white, .font: NSFont.systemFont(ofSize: 10)])
-            chatContainer.isHidden = true
-            tasksContainer.isHidden = true
-            resultsContainer.isHidden = true
-            logsContainer.isHidden = false
-        } else {
-            tabControl.isHidden = false
-            logsToggle.attributedTitle = NSAttributedString(string: ">>", attributes: [.foregroundColor: NSColor.white, .font: NSFont.systemFont(ofSize: 10)])
-            chatContainer.isHidden = tabControl.selectedSegment != 0
-            tasksContainer.isHidden = tabControl.selectedSegment != 1
-            resultsContainer.isHidden = tabControl.selectedSegment != 2
-            logsContainer.isHidden = true
+        // Shortcut: jump to Logs tab (or back to Ask).
+        if let logsIdx = tabLabels.firstIndex(of: "Logs"), tabControl.selectedSegment == logsIdx {
+            tabControl.selectedSegment = 0
+        } else if let logsIdx = tabLabels.firstIndex(of: "Logs") {
+            tabControl.selectedSegment = logsIdx
         }
+        tabChanged(tabControl)
+    }
+
+    func refreshTabsFromSettings() {
+        if !Settings.aiEnabled {
+            tabLabels = ["Ask", "Logs"]
+            chatTextView.string = "AI is off. Enable it in Settings → AI (uses local Ollama only)."
+            stopBasicScheduler()
+        } else {
+            var labels = ["Ask"]
+            if Settings.aiAgentsEnabled { labels.append("Agents") }
+            if Settings.aiTasksEnabled { labels.append("Tasks") }
+            labels.append("Results")
+            labels.append("Logs")
+            tabLabels = labels
+        }
+        tabControl.segmentCount = tabLabels.count
+        for (i, l) in tabLabels.enumerated() { tabControl.setLabel(l, forSegment: i) }
+        if tabControl.selectedSegment < 0 || tabControl.selectedSegment >= tabLabels.count { tabControl.selectedSegment = 0 }
+        tabChanged(tabControl)
     }
 
     @objc func tabChanged(_ sender: NSSegmentedControl) {
-        if !logsMode {
-            // normal mode
-            // handled by logsToggle button
-            chatContainer.isHidden = sender.selectedSegment != 0
-            tasksContainer.isHidden = sender.selectedSegment != 1
-            resultsContainer.isHidden = sender.selectedSegment != 2
-            logsContainer.isHidden = true
-            if sender.selectedSegment == 1 {
-                fetchTasks()
-            }
-            if sender.selectedSegment == 2 {
-                fetchResultsTasks()
-            }
-        } else {
-            if sender.selectedSegment == 0 {
-                // toggle back
-                logsMode = false
-                tabControl.segmentCount = 4
-                tabControl.setLabel("Ask", forSegment: 0)
-                tabControl.setLabel("Tasks", forSegment: 1)
-                tabControl.setLabel("Results", forSegment: 2)
-                tabControl.setLabel(">>", forSegment: 3)
-                tabControl.selectedSegment = 0
-                chatContainer.isHidden = false
-                tasksContainer.isHidden = true
-                resultsContainer.isHidden = true
-                logsContainer.isHidden = true
-                return
-            }
-            // Logs tab selected
-            chatContainer.isHidden = true
-            tasksContainer.isHidden = true
-            resultsContainer.isHidden = true
-            logsContainer.isHidden = false
-        }
+        let seg = sender.selectedSegment
+        guard seg >= 0, seg < tabLabels.count else { return }
+        let label = tabLabels[seg]
+        chatContainer.isHidden = label != "Ask"
+        tasksContainer.isHidden = !(label == "Agents" || label == "Tasks")
+        resultsContainer.isHidden = label != "Results"
+        logsContainer.isHidden = label != "Logs"
+        let onLogs = label == "Logs"
+        logsToggle.attributedTitle = NSAttributedString(string: onLogs ? "<<" : ">>", attributes: [.foregroundColor: NSColor.white, .font: NSFont.systemFont(ofSize: 10)])
+        if label == "Agents" { agentsMode = true; startBasicScheduler(); fetchTasks() }
+        if label == "Tasks" { fetchTasks() }
+        if label == "Results" { fetchResultsTasks() }
     }
 
     var onHide: (() -> Void)?
@@ -758,13 +725,16 @@ final class LocalChatView: NSView {
                 ]
                 self.saveLocalRun(taskId: taskId, run: run)
                 self.resultsTextView.string = "Task: \(name)\nStatus: success\nModel: \(model)\n\n\(result)"
-                self.tabControl.segmentCount = self.agentsMode ? 3 : 1
                 self.appendLog("[task] \(name): success")
+                self.tabControl.selectedSegment = 3
+                self.tabChanged(self.tabControl)
                 self.fetchTasks()
             } catch {
                 self.saveLocalRun(taskId: taskId, run: ["task_id": taskId, "task_name": name, "status": "failed", "error": "\(error)", "output": ""])
                 self.resultsTextView.string = "Task: \(name)\nStatus: failed\n\n\(error)"
                 self.appendLog("[task] \(name): failed — \(error)")
+                self.tabControl.selectedSegment = 3
+                self.tabChanged(self.tabControl)
                 self.fetchTasks()
             }
         }

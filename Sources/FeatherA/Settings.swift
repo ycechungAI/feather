@@ -64,6 +64,9 @@ enum Settings {
             "askPanelHeight": 340,
             "askPanelOpenByDefault": true,
             "showHomeButton": false,
+            "aiEnabled": false,
+            "aiTasksEnabled": false,
+            "aiAgentsEnabled": false,
         ])
     }
 
@@ -169,6 +172,22 @@ enum Settings {
     static var showHomeButton: Bool {
         get { d.object(forKey: "showHomeButton") == nil ? false : d.bool(forKey: "showHomeButton") }
         set { d.set(newValue, forKey: "showHomeButton") }
+    }
+
+    /// Master AI toggle. Off by default on install; enables AI panel/tabs when on.
+    static var aiEnabled: Bool {
+        get { d.bool(forKey: "aiEnabled") }
+        set { d.set(newValue, forKey: "aiEnabled") }
+    }
+    /// Show Tasks tab in AI panel (requires AI enabled).
+    static var aiTasksEnabled: Bool {
+        get { d.bool(forKey: "aiTasksEnabled") }
+        set { d.set(newValue, forKey: "aiTasksEnabled") }
+    }
+    /// Show Agents tab / enable agent features in AI panel (requires AI enabled).
+    static var aiAgentsEnabled: Bool {
+        get { d.bool(forKey: "aiAgentsEnabled") }
+        set { d.set(newValue, forKey: "aiAgentsEnabled") }
     }
 
     /// Whether chat history persists across sessions. When off, history is in-memory only.

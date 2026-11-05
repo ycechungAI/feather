@@ -455,7 +455,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
             webArea.bottomAnchor.constraint(equalTo: content.bottomAnchor),
         ]
         NSLayoutConstraint.activate(webAreaConstraints)
-        if Settings.askPanelOpenByDefault {
+        if Settings.aiEnabled && Settings.askPanelOpenByDefault {
             DispatchQueue.main.async { [weak self] in
                 self?.showAskPanel(pageText: "")
             }
@@ -737,7 +737,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         var items: [NSToolbarItem.Identifier] = [Item.back, Item.forward, Item.reload]
         if Settings.showHomeButton { items.append(Item.home) }
-        items += [Item.ask, Item.video, Item.shield, .flexibleSpace, Item.address, Item.star, .flexibleSpace, Item.downloads, Item.pins, Item.extensions]
+        items += [Item.video, Item.shield, Item.ask, .flexibleSpace, Item.address, Item.star, .flexibleSpace, Item.downloads, Item.pins, Item.extensions]
         return items
     }
 
