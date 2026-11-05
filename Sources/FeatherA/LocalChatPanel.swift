@@ -20,6 +20,7 @@ final class LocalChatView: NSView {
     private let tasksContainer = NSView()
     private let tasksScrollView = NSScrollView()
     private let tasksTextView = NSTextView()
+    private let taskRowsStack = NSStackView()
     private let resultsContainer = NSView()
     private let resultsScrollView = NSScrollView()
     private let resultsTextView = NSTextView()
@@ -205,6 +206,7 @@ final class LocalChatView: NSView {
         if let container = tasksTextView.textContainer {
             container.widthTracksTextView = true
         }
+        tasksContainer.addSubview(taskRowsStack)
         tasksContainer.addSubview(tasksScrollView)
         tasksContainer.addSubview(taskButtonBar)
         tasksContainer.addSubview(modelPicker)
@@ -214,6 +216,10 @@ final class LocalChatView: NSView {
         taskButtonBar.orientation = .vertical
         taskButtonBar.spacing = 4
         taskButtonBar.alignment = .leading
+        taskRowsStack.translatesAutoresizingMaskIntoConstraints = false
+        taskRowsStack.orientation = .vertical
+        taskRowsStack.spacing = 2
+        taskRowsStack.alignment = .leading
         taskBottomBar.translatesAutoresizingMaskIntoConstraints = false
         taskBottomBar.orientation = .horizontal
         taskBottomBar.spacing = 6
@@ -238,7 +244,10 @@ final class LocalChatView: NSView {
             modelPicker.leadingAnchor.constraint(equalTo: taskFilterPicker.trailingAnchor, constant: 8),
             modelPicker.trailingAnchor.constraint(equalTo: tasksContainer.trailingAnchor, constant: -8),
             modelPicker.heightAnchor.constraint(equalToConstant: 22),
-            taskButtonBar.topAnchor.constraint(equalTo: taskFilterPicker.bottomAnchor, constant: 4),
+            taskRowsStack.topAnchor.constraint(equalTo: taskFilterPicker.bottomAnchor, constant: 4),
+            taskRowsStack.leadingAnchor.constraint(equalTo: tasksContainer.leadingAnchor, constant: 8),
+            taskRowsStack.trailingAnchor.constraint(equalTo: tasksContainer.trailingAnchor, constant: -8),
+            taskButtonBar.topAnchor.constraint(equalTo: taskRowsStack.bottomAnchor, constant: 4),
             taskButtonBar.leadingAnchor.constraint(equalTo: tasksContainer.leadingAnchor, constant: 8),
             taskButtonBar.trailingAnchor.constraint(equalTo: tasksContainer.trailingAnchor, constant: -8),
             tasksScrollView.topAnchor.constraint(equalTo: taskButtonBar.bottomAnchor, constant: 4),
@@ -534,6 +543,98 @@ final class LocalChatView: NSView {
         logsScrollView.reflectScrolledClipView(clip)
     }
 
+    private func buildTaskRows(tasks: [[String: Any]]) {
+        for v in taskRowsStack.arrangedSubviews { taskRowsStack.removeArrangedSubview(v); v.removeFromSuperview() }
+        for (i, t) in tasks.enumerated() {
+            let name = t["name"] as? String ?? "?"
+            let status = t["status"] as? String ?? "?"
+            let enabled = t["enabled"] as? Bool ?? false
+            let taskId = t["id"] as? String ?? ""
+            let row = NSStackView()
+            row.orientation = .horizontal
+            row.spacing = 6
+            row.alignment = .centerY
+            let label = NSTextField(labelWithString: String(format: "%2d  %@ %@", i+1, enabled ? "●" : "○", name))
+            label.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+            label.textColor = NSColor(calibratedRed: 0.2, green: 1.0, blue: 0.2, alpha: 1.0)
+            label.lineBreakMode = .byTruncatingTail
+            let statusLabel = NSTextField(labelWithString: status)
+            statusLabel.font = .systemFont(ofSize: 9)
+            statusLabel.textColor = .secondaryLabelColor
+            let runBtn = NSButton(title: "Run", target: self, action: #selector(runTaskByIndex(_:)))
+            runBtn.bezelStyle = .recessed
+            runBtn.controlSize = .mini
+            runBtn.tag = i
+            let editBtn = NSButton(title: "Edit", target: self, action: #selector(editTaskByIndex(_:)))
+            editBtn.bezelStyle = .recessed
+            editBtn.controlSize = .mini
+            editBtn.tag = i
+            row.addArrangedSubview(label)
+            row.addArrangedSubview(NSView()) // spacer
+            row.addArrangedSubview(statusLabel)
+            row.addArrangedSubview(editBtn)
+            row.addArrangedSubview(runBtn)
+            taskRowsStack.addArrangedSubview(row)
+        }
+    }
+
+    @objc private func runTaskByIndex(_ sender: NSButton) {
+        let idx = sender.tag
+        guard idx >= 0, idx < currentTasks.count else { return }
+        let task = currentTasks[idx]
+        guard let taskId = task["id"] as? String else { return }
+        guard let url = URL(string: "http://127.0.0.1:8787/api/tasks/\(taskId)/run") else { return }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        URLSession.shared.dataTask(with: req) { _, _, _ in
+            DispatchQueue.main.async {
+                self.fetchTasks()
+                self.pollResult(taskId: taskId, attempts: 0)
+            }
+        }.resume()
+    }
+
+    @objc private func editTaskByIndex(_ sender: NSButton) {
+        let idx = sender.tag
+        guard idx >= 0, idx < currentTasks.count else { return }
+        let task = currentTasks[idx]
+        guard let filename = task["filename"] as? String else { return }
+        guard let url = URL(string: "http://127.0.0.1:8787/api/tasks/file/\(filename)") else { return }
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+            guard let data, let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let content = obj["content"] as? String else { return }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                let alert = NSAlert()
+                alert.messageText = "Edit \(filename)"
+                let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 480, height: 300))
+                let tv = NSTextView(frame: scroll.bounds)
+                tv.string = content
+                tv.isVerticallyResizable = true
+                tv.autoresizingMask = [.width]
+                if let c = tv.textContainer { c.widthTracksTextView = true }
+                scroll.documentView = tv
+                scroll.hasVerticalScroller = true
+                alert.accessoryView = scroll
+                alert.addButton(withTitle: "Save")
+                alert.addButton(withTitle: "Cancel")
+                guard let window = self.window else { return }
+                alert.beginSheetModal(for: window) { resp in
+                    guard resp == .alertFirstButtonReturn else { return }
+                    let newContent = tv.string
+                    guard let putURL = URL(string: "http://127.0.0.1:8787/api/tasks/file/\(filename)") else { return }
+                    var req = URLRequest(url: putURL)
+                    req.httpMethod = "PUT"
+                    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    req.httpBody = try? JSONSerialization.data(withJSONObject: ["content": newContent])
+                    URLSession.shared.dataTask(with: req) { _, _, _ in
+                        DispatchQueue.main.async { self.fetchTasks() }
+                    }.resume()
+                }
+            }
+        }.resume()
+    }
+
     private func fetchTasks() {
         tasksTextView.string = "Loading tasks...\n"
         guard let url = URL(string: "http://127.0.0.1:8787/api/tasks") else { return }
@@ -558,6 +659,7 @@ final class LocalChatView: NSView {
                     lines.append("")
                 }
                 self.currentTasks = tasks
+                self.buildTaskRows(tasks: tasks)
                 self.taskFilterPicker.removeAllItems()
                 self.taskFilterPicker.addItem(withTitle: "All")
                 for t in tasks {
