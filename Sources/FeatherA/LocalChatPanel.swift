@@ -96,37 +96,20 @@ final class LocalChatView: NSView {
         history = Settings.saveChatHistory ? Self.loadHistory() : []
         inputField.stringValue = ""
         render()
-        let log = { (m: String) in
-            if let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
-                let url = dir.appendingPathComponent("feathera_debug.log")
-                if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write((m + "\n").data(using: .utf8)!); h.closeFile() }
-                else { try? (m + "\n").write(to: url, atomically: true, encoding: .utf8) }
-            }
-        }
-        log("configure: panel=\(self.frame) inputField=\(inputField.frame) sendBtn=\(sendButton.frame) closeBtn=\(closeButton.frame) scroll=\(chatScrollView.frame)")
     }
 
     @objc func sendChatNow() {
-        let log = { (m: String) in
-            if let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
-                let url = dir.appendingPathComponent("feathera_debug.log")
-                if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write((m + "\n").data(using: .utf8)!); h.closeFile() }
-                else { try? (m + "\n").write(to: url, atomically: true, encoding: .utf8) }
-            }
-        }
         let question = inputField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !question.isEmpty else { log("sendChatNow: empty"); return }
+        guard !question.isEmpty else { return }
         inputField.stringValue = ""
         history.append("You: \(question)")
         history.append("Feather: Thinking...")
         render()
-        log("sendChatNow: q=\(question)")
         Task { @MainActor in
             if let idx = self.history.lastIndex(of: "Feather: Thinking...") { self.history.remove(at: idx) }
             await self.answer(question: question)
             self.render()
-            log("sendChatNow: done count=\(self.history.count)")
-        }
+            }
     }
 
     @objc func closeChat() {
@@ -174,24 +157,14 @@ final class LocalChatView: NSView {
     }
 
     private func answer(question: String) async {
-        let log = { (m: String) in
-            if let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
-                let url = dir.appendingPathComponent("feathera_debug.log")
-                if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write((m + "\n").data(using: .utf8)!); h.closeFile() }
-                else { try? (m + "\n").write(to: url, atomically: true, encoding: .utf8) }
-            }
-        }
-        log("answer: start q=\(question)")
         let config = ServicesConfig()
         let router = Router(config: config)
         let result = try? await router.route(question, pageOpen: !pageText.isEmpty)
         guard let result else {
-            log("answer: router returned nil")
-            history.append("Feather: The local router didn't answer just now. Start Ollama, then try again.")
+                history.append("Feather: The local router didn't answer just now. Start Ollama, then try again.")
             render()
             return
         }
-        log("answer: route result=\(result)")
         switch result {
         case .routed(.pageQA), .routed(.nothing):
             let text = (try? await LocalModel(config: config).ask(question: question, pageText: pageText))
