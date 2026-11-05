@@ -32,6 +32,11 @@ final class LocalChatView: NSView {
         chatTextView.isEditable = false
         chatTextView.isSelectable = true
         chatTextView.drawsBackground = false
+        chatTextView.isVerticallyResizable = true
+        chatTextView.autoresizingMask = [.width]
+        if let container = chatTextView.textContainer {
+            container.widthTracksTextView = true
+        }
 
         inputRow.translatesAutoresizingMaskIntoConstraints = false
         inputRow.heightAnchor.constraint(equalToConstant: 44).isActive = true
@@ -83,7 +88,7 @@ final class LocalChatView: NSView {
 
     func configure(pageText: String) {
         self.pageText = pageText
-        history = []
+        history = Settings.saveChatHistory ? Self.loadHistory() : []
         inputField.stringValue = ""
         render()
     }
@@ -105,10 +110,38 @@ final class LocalChatView: NSView {
 
     var onHide: (() -> Void)?
 
+    private static var historyURL: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("FeatherA", isDirectory: true)
+        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        return base.appendingPathComponent("chat_history.json")
+    }
+
+    static func loadHistory() -> [String] {
+        guard let data = try? Data(contentsOf: historyURL),
+              let arr = try? JSONDecoder().decode([String].self, from: data) else {
+            return []
+        }
+        return arr
+    }
+
+    static func saveHistory(_ history: [String]) {
+        if let data = try? JSONEncoder().encode(history) {
+            try? data.write(to: historyURL, options: .atomic)
+        }
+    }
+
+    static func clearHistory() {
+        try? FileManager.default.removeItem(at: historyURL)
+    }
+
     private func render() {
         let text = history.isEmpty ? "Ask a question about this page." : history.joined(separator: "\n\n")
         chatTextView.string = text
         chatTextView.sizeToFit()
+        if Settings.saveChatHistory {
+            Self.saveHistory(history)
+        }
     }
 
     private func answer(question: String) async {

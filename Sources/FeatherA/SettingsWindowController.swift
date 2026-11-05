@@ -15,6 +15,8 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private var suggestions: NSButton!
     private var restore: NSButton!
     private var inspector: NSButton!
+    private var saveChatHistoryBox: NSButton!
+    private var clearChatHistoryButton: NSButton!
     private let exceptions = NSTableView()
     private var removeException: NSButton!
     private let defaultStatus = NSTextField(labelWithString: "")
@@ -89,6 +91,12 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         suggestions = checkbox("Show search engine suggestions", #selector(toggled(_:)))
         restore = checkbox("Reopen tabs from last time when FeatherA starts", #selector(toggled(_:)))
         inspector = checkbox("Show Inspect Element (Web Inspector, with the console)", #selector(toggled(_:)))
+        saveChatHistoryBox = checkbox("Save chat history between sessions", #selector(toggled(_:)))
+        clearChatHistoryButton = NSButton(title: "Clear chat history", target: self, action: #selector(clearChatHistoryClicked(_:)))
+        let chatHistoryBox = NSStackView(views: [saveChatHistoryBox, clearChatHistoryButton])
+        chatHistoryBox.orientation = .horizontal
+        chatHistoryBox.spacing = 8
+        chatHistoryBox.alignment = .centerY
         let inspectorBox = NSStackView(views: [inspector, note("Right-click a page ▸ Inspect Element, or View ▸ Show Web Inspector (⌥⌘I). "
                                                                + "Applies to pages loaded after you turn it on.")])
         inspectorBox.orientation = .vertical
@@ -157,6 +165,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             [label("Startup:"), restore],
             [label("Default browser:"), defaultBox],
             [label("Developer:"), inspectorBox],
+            [label("Chat history:"), chatHistoryBox],
             [label("Ask AI panel:"), askPosition],
         ])
         grid.column(at: 0).xPlacement = .trailing
@@ -221,6 +230,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         suggestions.isEnabled = Settings.searchEngine?.suggestURL != nil
         restore.state = Settings.restoreSession ? .on : .off
         inspector.state = Settings.webInspector ? .on : .off
+        saveChatHistoryBox.state = Settings.saveChatHistory ? .on : .off
         exceptions.reloadData()
         removeException.isEnabled = exceptions.selectedRow >= 0
         refreshDefaultBrowser()
@@ -235,6 +245,10 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     }
 
     // MARK: Actions
+
+    @objc private func clearChatHistoryClicked(_ sender: Any?) {
+        LocalChatView.clearHistory()
+    }
 
     @objc private func askPositionChanged(_ sender: NSPopUpButton) {
         let index = sender.indexOfSelectedItem
@@ -302,6 +316,8 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         case httpsOnly: Settings.httpsOnly = on
         case suggestions: Settings.searchSuggestions = on
         case restore: Settings.restoreSession = on
+        case saveChatHistoryBox:
+            Settings.saveChatHistory = on
         case inspector:
             Settings.webInspector = on
             // Open tabs too: their preferences object is shared with the live page, so Inspect

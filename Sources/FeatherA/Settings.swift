@@ -59,6 +59,7 @@ enum Settings {
             "cacheLimitMB": 500,
             "webInspector": false,
             "askPanelPosition": "right",
+            "saveChatHistory": true,
         ])
     }
 
@@ -141,6 +142,12 @@ enum Settings {
     static var askPanelPosition: String {
         get { d.string(forKey: "askPanelPosition") ?? "right" }
         set { d.set(newValue, forKey: "askPanelPosition") }
+    }
+
+    /// Whether chat history persists across sessions. When off, history is in-memory only.
+    static var saveChatHistory: Bool {
+        get { d.object(forKey: "saveChatHistory") == nil ? true : d.bool(forKey: "saveChatHistory") }
+        set { d.set(newValue, forKey: "saveChatHistory") }
     }
 
     /// Whether ad and tracker blocking should run on pages from `host`.
