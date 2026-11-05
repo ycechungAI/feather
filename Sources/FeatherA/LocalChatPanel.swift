@@ -98,9 +98,8 @@ final class LocalChatView: NSView {
         chatContainer.translatesAutoresizingMaskIntoConstraints = false
 
         chatScrollView.translatesAutoresizingMaskIntoConstraints = false
-        chatScrollView.hasVerticalScroller = true
+        chatScrollView.hasVerticalScroller = false
         chatScrollView.hasHorizontalScroller = false
-        chatScrollView.scrollerStyle = .legacy
         chatScrollView.borderType = .bezelBorder
         chatScrollView.documentView = chatTextView
         chatTextView.frame = NSRect(x: 0, y: 0, width: 400, height: 200)
@@ -139,6 +138,12 @@ final class LocalChatView: NSView {
         closeButton.target = self
         closeButton.action = #selector(closeChat)
 
+        let chatUp = NSButton(title: "<", target: self, action: #selector(scrollChatUp(_:)))
+        let chatDown = NSButton(title: ">", target: self, action: #selector(scrollChatDown(_:)))
+        chatUp.bezelStyle = .recessed; chatUp.controlSize = .mini
+        chatDown.bezelStyle = .recessed; chatDown.controlSize = .mini
+        inputStack.addArrangedSubview(chatUp)
+        inputStack.addArrangedSubview(chatDown)
         inputStack.addArrangedSubview(inputField)
         inputStack.addArrangedSubview(sendButton)
         inputStack.addArrangedSubview(closeButton)
@@ -164,8 +169,7 @@ final class LocalChatView: NSView {
         // Logs
         logsContainer.translatesAutoresizingMaskIntoConstraints = false
         logsScrollView.translatesAutoresizingMaskIntoConstraints = false
-        logsScrollView.hasVerticalScroller = true
-        logsScrollView.scrollerStyle = .legacy
+        logsScrollView.hasVerticalScroller = false
         logsScrollView.borderType = .bezelBorder
         logsScrollView.documentView = logsTextView
         logsTextView.frame = NSRect(x: 0, y: 0, width: 400, height: 200)
@@ -180,20 +184,33 @@ final class LocalChatView: NSView {
         if let container = logsTextView.textContainer {
             container.widthTracksTextView = true
         }
+        let logsNav = NSStackView()
+        logsNav.translatesAutoresizingMaskIntoConstraints = false
+        logsNav.orientation = .horizontal
+        logsNav.spacing = 4
+        let logsUp = NSButton(title: "<", target: self, action: #selector(scrollLogsUp(_:)))
+        let logsDown = NSButton(title: ">", target: self, action: #selector(scrollLogsDown(_:)))
+        logsUp.bezelStyle = .recessed; logsUp.controlSize = .mini
+        logsDown.bezelStyle = .recessed; logsDown.controlSize = .mini
+        logsNav.addArrangedSubview(logsUp)
+        logsNav.addArrangedSubview(logsDown)
         logsContainer.addSubview(logsScrollView)
+        logsContainer.addSubview(logsNav)
         NSLayoutConstraint.activate([
             logsScrollView.topAnchor.constraint(equalTo: logsContainer.topAnchor),
             logsScrollView.leadingAnchor.constraint(equalTo: logsContainer.leadingAnchor),
             logsScrollView.trailingAnchor.constraint(equalTo: logsContainer.trailingAnchor),
-            logsScrollView.bottomAnchor.constraint(equalTo: logsContainer.bottomAnchor),
+            logsScrollView.bottomAnchor.constraint(equalTo: logsNav.topAnchor, constant: -4),
+            logsNav.leadingAnchor.constraint(equalTo: logsContainer.leadingAnchor, constant: 8),
+            logsNav.bottomAnchor.constraint(equalTo: logsContainer.bottomAnchor, constant: -4),
+            logsNav.heightAnchor.constraint(equalToConstant: 20),
         ])
 
         // Tasks
         tasksContainer.translatesAutoresizingMaskIntoConstraints = false
         tasksContainer.appearance = NSAppearance(named: .darkAqua)
         tasksScrollView.translatesAutoresizingMaskIntoConstraints = false
-        tasksScrollView.hasVerticalScroller = true
-        tasksScrollView.scrollerStyle = .legacy
+        tasksScrollView.hasVerticalScroller = false
         tasksScrollView.borderType = .bezelBorder
         tasksContentStack.addArrangedSubview(taskRowsStack)
         tasksContentStack.addArrangedSubview(tasksTextView)
@@ -261,8 +278,7 @@ final class LocalChatView: NSView {
         resultsContainer.wantsLayer = true
         resultsContainer.layer?.backgroundColor = NSColor(white: 0.05, alpha: 1).cgColor
         resultsScrollView.translatesAutoresizingMaskIntoConstraints = false
-        resultsScrollView.hasVerticalScroller = true
-        resultsScrollView.scrollerStyle = .legacy
+        resultsScrollView.hasVerticalScroller = false
         resultsScrollView.borderType = .bezelBorder
         resultsScrollView.documentView = resultsTextView
         resultsTextView.frame = NSRect(x: 0, y: 0, width: 400, height: 200)
@@ -290,9 +306,20 @@ final class LocalChatView: NSView {
         runPicker.font = .systemFont(ofSize: 10)
         runPicker.appearance = NSAppearance(named: .darkAqua)
         runPicker.menu?.appearance = NSAppearance(named: .darkAqua)
+        let resultsNav = NSStackView()
+        resultsNav.translatesAutoresizingMaskIntoConstraints = false
+        resultsNav.orientation = .horizontal
+        resultsNav.spacing = 4
+        let resultsUp = NSButton(title: "<", target: self, action: #selector(scrollResultsUp(_:)))
+        let resultsDown = NSButton(title: ">", target: self, action: #selector(scrollResultsDown(_:)))
+        resultsUp.bezelStyle = .recessed; resultsUp.controlSize = .mini
+        resultsDown.bezelStyle = .recessed; resultsDown.controlSize = .mini
+        resultsNav.addArrangedSubview(resultsUp)
+        resultsNav.addArrangedSubview(resultsDown)
         resultsContainer.addSubview(taskPicker)
         resultsContainer.addSubview(runPicker)
         resultsContainer.addSubview(resultsScrollView)
+        resultsContainer.addSubview(resultsNav)
         NSLayoutConstraint.activate([
             taskPicker.topAnchor.constraint(equalTo: resultsContainer.topAnchor, constant: 4),
             taskPicker.leadingAnchor.constraint(equalTo: resultsContainer.leadingAnchor, constant: 8),
@@ -305,8 +332,11 @@ final class LocalChatView: NSView {
             resultsScrollView.topAnchor.constraint(equalTo: taskPicker.bottomAnchor, constant: 4),
             resultsScrollView.leadingAnchor.constraint(equalTo: resultsContainer.leadingAnchor),
             resultsScrollView.trailingAnchor.constraint(equalTo: resultsContainer.trailingAnchor),
-            resultsScrollView.bottomAnchor.constraint(equalTo: resultsContainer.bottomAnchor),
+            resultsScrollView.bottomAnchor.constraint(equalTo: resultsNav.topAnchor, constant: -4),
             resultsScrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 120),
+            resultsNav.leadingAnchor.constraint(equalTo: resultsContainer.leadingAnchor, constant: 8),
+            resultsNav.bottomAnchor.constraint(equalTo: resultsContainer.bottomAnchor, constant: -4),
+            resultsNav.heightAnchor.constraint(equalToConstant: 20),
         ])
 
         // Assemble
@@ -578,23 +608,30 @@ final class LocalChatView: NSView {
             return row
         }
         if twoColumns {
-            let leftStack = NSStackView()
-            let rightStack = NSStackView()
-            leftStack.orientation = .vertical
-            leftStack.spacing = 2
-            leftStack.alignment = .leading
-            rightStack.orientation = .vertical
-            rightStack.spacing = 2
-            rightStack.alignment = .leading
-            for (i, t) in tasks.enumerated() {
-                let row = makeRow(i, t)
-                if i % 2 == 0 { leftStack.addArrangedSubview(row) } else { rightStack.addArrangedSubview(row) }
+            let width = self.bounds.width > 0 ? self.bounds.width : 1280
+            let ncols = width >= 900 ? 3 : 2
+            var cols: [NSStackView] = (0..<ncols).map { _ in
+                let st = NSStackView()
+                st.orientation = .vertical
+                st.spacing = 2
+                st.alignment = .leading
+                return st
             }
-            let cols = NSStackView(views: [leftStack, rightStack])
-            cols.orientation = .horizontal
-            cols.spacing = 8
-            cols.alignment = .top
-            taskRowsStack.addArrangedSubview(cols)
+            // pad to at least ncols*2 tasks
+            var padded = tasks
+            while padded.count < ncols * 2 { padded.append([:]) }
+            for (i, t) in padded.enumerated() {
+                if t.isEmpty {
+                    cols[i % ncols].addArrangedSubview(NSView())
+                    continue
+                }
+                cols[i % ncols].addArrangedSubview(makeRow(i, t))
+            }
+            let container = NSStackView(views: cols)
+            container.orientation = .horizontal
+            container.spacing = 8
+            container.alignment = .top
+            taskRowsStack.addArrangedSubview(container)
         } else {
             for (i, t) in tasks.enumerated() {
                 taskRowsStack.addArrangedSubview(makeRow(i, t))
@@ -1093,6 +1130,24 @@ final class LocalChatView: NSView {
         }
     }
 
+
+    @objc private func scrollChatUp(_ s: Any?) { scrollByPage(chatScrollView, up: true) }
+    @objc private func scrollChatDown(_ s: Any?) { scrollByPage(chatScrollView, up: false) }
+    @objc private func scrollLogsUp(_ s: Any?) { scrollByPage(logsScrollView, up: true) }
+    @objc private func scrollLogsDown(_ s: Any?) { scrollByPage(logsScrollView, up: false) }
+    @objc private func scrollTasksUp(_ s: Any?) { scrollByPage(tasksScrollView, up: true) }
+    @objc private func scrollTasksDown(_ s: Any?) { scrollByPage(tasksScrollView, up: false) }
+    @objc private func scrollResultsUp(_ s: Any?) { scrollByPage(resultsScrollView, up: true) }
+    @objc private func scrollResultsDown(_ s: Any?) { scrollByPage(resultsScrollView, up: false) }
+
+    private func scrollByPage(_ sv: NSScrollView, up: Bool) {
+        let clip = sv.contentView
+        let page = clip.bounds.height * 0.8
+        let cur = clip.bounds.origin.y
+        let new = up ? max(0, cur - page) : cur + page
+        clip.scroll(to: NSPoint(x: 0, y: new))
+        sv.reflectScrolledClipView(clip)
+    }
 
     private func answer(question: String) async {
         appendLog("Question: \(question)")
