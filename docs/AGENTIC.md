@@ -44,6 +44,17 @@ Research on macOS should use what macOS already provides, not orcastrator. Candi
 Web search itself still needs a source; this is an open choice.
 Feather's new code is the browser side: the panel, the page text, and the forms. The services do the work.
 
+## Models and routing (decided)
+
+- **Answers:** `granite4:3b` (page Q&A, summaries).
+- **Routing:** `tev1:0.8b`, a fast decision model. It doesn't accept chat or generate calls. Noskill calls it through
+  Ollama's `POST /v1/systemone` with JSON `{"model", "state", "questions", "keep_alive": -1}` (see noskill
+  `internal/decide/jev.go`). Feather's router must use that same call, not a chat request.
+- **Install choice (user decides):** Feather offers two ways to get Ollama:
+  1. **Standalone:** the user installs Ollama from ollama.com; Feather only checks that it runs.
+  2. **Integrated:** Feather downloads and updates Ollama itself, into `~/Library/Application Support/Feather/`.
+  Both work the same way once the server answers on `127.0.0.1:11434`.
+
 ## Features
 
 Must have:
