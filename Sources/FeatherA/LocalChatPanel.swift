@@ -137,11 +137,15 @@ final class LocalChatView: NSView {
 
         sendButton.translatesAutoresizingMaskIntoConstraints = false
         sendButton.title = "Send"
+        sendButton.contentTintColor = NSColor.white
+        sendButton.attributedTitle = NSAttributedString(string: "Send", attributes: [.foregroundColor: NSColor.white, .font: NSFont.systemFont(ofSize: 11)])
         sendButton.target = self
         sendButton.action = #selector(sendChatNow)
 
         closeButton.translatesAutoresizingMaskIntoConstraints = false
         closeButton.title = "Close"
+        closeButton.contentTintColor = NSColor.white
+        closeButton.attributedTitle = NSAttributedString(string: "Close", attributes: [.foregroundColor: NSColor.white, .font: NSFont.systemFont(ofSize: 11)])
         closeButton.target = self
         closeButton.action = #selector(closeChat)
 
