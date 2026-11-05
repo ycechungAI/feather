@@ -50,7 +50,7 @@ Feather's new code is the browser side: the panel, the page text, and the forms.
   - **Router** `tev1:0.8b` [routerModel]: fast decisions, which tool or service handles a request.
   - **Answers** `granite4:3b` [answerModel]: page Q&A and summaries.
   - **Basic** `gemma3:1b` [basicModel]: search and simple agentic tasks.
-- The router is `tev1:0.8b`, a fast decision model. It doesn't accept chat or generate calls. Noskill calls it through
+- The router is `tev1:0.8b`, a fast decision model. It returns a route (`page_qa`, `search`, `schedule`, `none`) and a confidence. Below 0.5 confidence, or an unknown label, Feather asks the user instead of guessing. Tested live: a page-question with the page open routes to `page_qa` (0.67); a news search with no page routes to `none` at 0.31, which is why the threshold exists. It doesn't accept chat or generate calls. Noskill calls it through
   Ollama's `POST /v1/systemone` with JSON `{"model", "state", "questions", "keep_alive": -1}` (see noskill
   `internal/decide/jev.go`). Feather's router must use that same call, not a chat request.
 - **Install choice (user decides):** Feather offers two ways to get Ollama:
