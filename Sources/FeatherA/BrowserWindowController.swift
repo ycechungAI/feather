@@ -455,6 +455,11 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
             webArea.bottomAnchor.constraint(equalTo: content.bottomAnchor),
         ]
         NSLayoutConstraint.activate(webAreaConstraints)
+        if Settings.askPanelOpenByDefault {
+            DispatchQueue.main.async { [weak self] in
+                self?.showAskPanel(pageText: "")
+            }
+        }
         NotificationCenter.default.addObserver(self, selector: #selector(refreshStar),
                                                name: Bookmarks.changed, object: nil)
     }
@@ -1580,11 +1585,6 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         askPanel.needsLayout = true
         content.needsLayout = true
         content.layoutSubtreeIfNeeded()
-        if Settings.askPanelOpenByDefault {
-            DispatchQueue.main.async { [weak self] in
-                self?.showAskPanel(pageText: "")
-            }
-        }
     }
 
     func hideAskPanel() {
