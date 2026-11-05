@@ -11,6 +11,7 @@ final class TabWindow: NSWindowController, NSWindowDelegate, NSMenuItemValidatio
     private var controllers: [UUID: BrowserWindowController] = [:]
     let strip = TabStripView()
     private let aiStatusLabel = NSTextField(labelWithString: "")
+    private let pullModelsButton = NSButton(title: "Pull", target: nil, action: nil)
     /// One bookmark bar per window (not per tab), always shown under the tab strip.
     private let bookmarkBar = BookmarkBar()
     private let slot = NSView()
@@ -50,7 +51,15 @@ final class TabWindow: NSWindowController, NSWindowDelegate, NSMenuItemValidatio
         aiStatusLabel.font = .systemFont(ofSize: 10)
         aiStatusLabel.textColor = .secondaryLabelColor
         aiStatusLabel.translatesAutoresizingMaskIntoConstraints = false
+        pullModelsButton.translatesAutoresizingMaskIntoConstraints = false
+        pullModelsButton.bezelStyle = .recessed
+        pullModelsButton.controlSize = .mini
+        pullModelsButton.title = "Pull models"
+        pullModelsButton.target = self
+        pullModelsButton.action = #selector(openOllamaLibrary(_:))
+        pullModelsButton.isHidden = true
         root.addSubview(aiStatusLabel)
+        root.addSubview(pullModelsButton)
 
         NSLayoutConstraint.activate([
             strip.topAnchor.constraint(equalTo: root.topAnchor),
@@ -58,7 +67,9 @@ final class TabWindow: NSWindowController, NSWindowDelegate, NSMenuItemValidatio
             strip.trailingAnchor.constraint(equalTo: aiStatusLabel.leadingAnchor, constant: -8),
             strip.heightAnchor.constraint(equalToConstant: TabStripView.height),
             aiStatusLabel.centerYAnchor.constraint(equalTo: strip.centerYAnchor),
-            aiStatusLabel.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -12),
+            pullModelsButton.centerYAnchor.constraint(equalTo: strip.centerYAnchor),
+            pullModelsButton.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -8),
+            aiStatusLabel.trailingAnchor.constraint(lessThanOrEqualTo: pullModelsButton.leadingAnchor, constant: -6),
             bookmarkBar.topAnchor.constraint(equalTo: strip.bottomAnchor),
             bookmarkBar.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             bookmarkBar.trailingAnchor.constraint(equalTo: root.trailingAnchor),
@@ -75,7 +86,40 @@ final class TabWindow: NSWindowController, NSWindowDelegate, NSMenuItemValidatio
                 tab.load(url)
             }
         }
+        refreshAIStatus(config: config)
         Self.all.append(self)
+    }
+
+    private func refreshAIStatus(config: ServicesConfig) {
+        guard let url = URL(string: config.ollama + "/api/tags") else { return }
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                let names: [String]
+                if let data,
+                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let models = obj["models"] as? [[String: Any]] {
+                    names = models.compactMap { $0["name"] as? String }
+                } else {
+                    names = []
+                }
+                let hasAnswer = names.contains { $0 == config.answerModel || $0.hasPrefix(config.answerModel.split(separator: ":").first.map(String.init) ?? config.answerModel) }
+                let hasRouter = names.contains { $0 == config.routerModel || $0.hasPrefix(config.routerModel.split(separator: ":").first.map(String.init) ?? config.routerModel) }
+                if names.isEmpty || (!hasAnswer && !hasRouter) {
+                    self.aiStatusLabel.stringValue = "AI: no model"
+                    self.pullModelsButton.isHidden = false
+                } else {
+                    self.aiStatusLabel.stringValue = "AI: \(config.answerModel) · \(config.routerModel)"
+                    self.pullModelsButton.isHidden = true
+                }
+            }
+        }.resume()
+    }
+
+    @objc private func openOllamaLibrary(_ sender: Any?) {
+        if let url = URL(string: "https://ollama.com/library") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     required init?(coder: NSCoder) { fatalError() }

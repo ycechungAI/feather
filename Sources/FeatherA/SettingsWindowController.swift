@@ -17,6 +17,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private var inspector: NSButton!
     private var saveChatHistoryBox: NSButton!
     private var askPanelOpenByDefaultBox: NSButton!
+    private var showHomeButtonBox: NSButton!
     private var clearChatHistoryButton: NSButton!
     private let exceptions = NSTableView()
     private var removeException: NSButton!
@@ -94,6 +95,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         inspector = checkbox("Show Inspect Element (Web Inspector, with the console)", #selector(toggled(_:)))
         saveChatHistoryBox = checkbox("Save chat history between sessions", #selector(toggled(_:)))
         askPanelOpenByDefaultBox = checkbox("Open Ask AI panel by default", #selector(toggled(_:)))
+        showHomeButtonBox = checkbox("Show Home button in toolbar (off by default)", #selector(toggled(_:)))
         clearChatHistoryButton = NSButton(title: "Clear chat history", target: self, action: #selector(clearChatHistoryClicked(_:)))
         let chatHistoryBox = NSStackView(views: [saveChatHistoryBox, clearChatHistoryButton])
         chatHistoryBox.orientation = .horizontal
@@ -157,6 +159,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             [label("Search engine:"), engine],
             [NSGridCell.emptyContentView, customSearch],
             [label("Home page:"), homeRow],
+            [NSGridCell.emptyContentView, showHomeButtonBox],
             [label("Sleep inactive tabs after:"), sleep],
             [label("Web cache limit:"), cacheBox],
             [label("Stay signed in:"), signedIn],
@@ -235,6 +238,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         inspector.state = Settings.webInspector ? .on : .off
         saveChatHistoryBox.state = Settings.saveChatHistory ? .on : .off
         askPanelOpenByDefaultBox.state = Settings.askPanelOpenByDefault ? .on : .off
+        showHomeButtonBox.state = Settings.showHomeButton ? .on : .off
         exceptions.reloadData()
         removeException.isEnabled = exceptions.selectedRow >= 0
         refreshDefaultBrowser()
@@ -324,6 +328,9 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             Settings.saveChatHistory = on
         case askPanelOpenByDefaultBox:
             Settings.askPanelOpenByDefault = on
+        case showHomeButtonBox:
+            Settings.showHomeButton = on
+            NotificationCenter.default.post(name: Settings.changed, object: nil)
         case inspector:
             Settings.webInspector = on
             // Open tabs too: their preferences object is shared with the live page, so Inspect

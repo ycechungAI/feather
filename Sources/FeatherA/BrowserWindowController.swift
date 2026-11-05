@@ -735,7 +735,10 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [Item.back, Item.forward, Item.reload, Item.home, Item.ask, Item.video, Item.shield, .flexibleSpace, Item.address, Item.star, .flexibleSpace, Item.downloads, Item.pins, Item.extensions]
+        var items: [NSToolbarItem.Identifier] = [Item.back, Item.forward, Item.reload]
+        if Settings.showHomeButton { items.append(Item.home) }
+        items += [Item.ask, Item.video, Item.shield, .flexibleSpace, Item.address, Item.star, .flexibleSpace, Item.downloads, Item.pins, Item.extensions]
+        return items
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {

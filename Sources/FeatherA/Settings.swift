@@ -63,6 +63,7 @@ enum Settings {
             "askPanelWidth": 380,
             "askPanelHeight": 340,
             "askPanelOpenByDefault": true,
+            "showHomeButton": false,
         ])
     }
 
@@ -162,6 +163,12 @@ enum Settings {
     static var askPanelOpenByDefault: Bool {
         get { d.object(forKey: "askPanelOpenByDefault") == nil ? true : d.bool(forKey: "askPanelOpenByDefault") }
         set { d.set(newValue, forKey: "askPanelOpenByDefault") }
+    }
+
+    /// Show the Home button in the toolbar. Off by default; can be turned back on in Settings.
+    static var showHomeButton: Bool {
+        get { d.object(forKey: "showHomeButton") == nil ? false : d.bool(forKey: "showHomeButton") }
+        set { d.set(newValue, forKey: "showHomeButton") }
     }
 
     /// Whether chat history persists across sessions. When off, history is in-memory only.
