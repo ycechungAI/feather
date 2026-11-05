@@ -20,7 +20,9 @@ final class LocalChatView: NSView {
         super.init(frame: frameRect)
         translatesAutoresizingMaskIntoConstraints = false
         wantsLayer = true
-        layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        layer?.backgroundColor = NSColor.systemYellow.cgColor
+        layer?.borderColor = NSColor.systemRed.cgColor
+        layer?.borderWidth = 3
 
         chatScrollView.translatesAutoresizingMaskIntoConstraints = false
         chatScrollView.hasVerticalScroller = true

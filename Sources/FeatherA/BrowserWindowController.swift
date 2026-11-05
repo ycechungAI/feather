@@ -1590,7 +1590,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         askPanel.needsLayout = true
         content.needsLayout = true
         content.layoutSubtreeIfNeeded()
-        log("after layout askPanel.frame=\(askPanel.frame) hidden=\(askPanel.isHidden) webArea.frame=\(webArea.frame)")
+        log("after layout askPanel.frame=\(askPanel.frame) hidden=\(askPanel.isHidden) webArea.frame=\(webArea.frame) content.superview=\(String(describing: content.superview)) content.window=\(String(describing: content.window))")
     }
 
     func hideAskPanel() {
