@@ -424,7 +424,7 @@ final class LocalChatView: NSView {
         case .changed:
             let delta: CGFloat
             if panelPosition == "bottom" {
-                delta = panStartLocation - loc.y
+                delta = loc.y - panStartLocation
             } else if panelPosition == "left" {
                 delta = loc.x - panStartLocation
             } else {
