@@ -613,13 +613,14 @@ final class LocalChatView: NSView {
             let row = NSStackView()
             row.orientation = .horizontal
             row.spacing = 6
-            row.alignment = .centerY
+            row.alignment = .top
             let numLabel = NSTextField(labelWithString: String(format: "%2d", i+1))
             numLabel.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
             numLabel.alignment = .left
             numLabel.textColor = NSColor(calibratedRed: 0.2, green: 1.0, blue: 0.2, alpha: 1.0)
             numLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
             numLabel.setContentHuggingPriority(.required, for: .horizontal)
+            numLabel.widthAnchor.constraint(equalToConstant: 18).isActive = true
             let label = NSTextField(labelWithString: String(format: "%@ %@   %@ · %@ · %@", enabled ? "●" : "○", name, sched, status, next))
             label.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
             if self.panelPosition == "bottom" {
