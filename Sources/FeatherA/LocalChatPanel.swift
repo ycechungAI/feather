@@ -795,6 +795,9 @@ final class LocalChatView: NSView {
                 self.modelPicker.addItems(withTitles: names)
                 if let sel = self.selectedRunModel, let idx = names.firstIndex(of: sel) {
                     self.modelPicker.selectItem(at: idx)
+                } else if let idx = names.firstIndex(of: "granite4:3b") {
+                    self.modelPicker.selectItem(at: idx)
+                    self.selectedRunModel = "granite4:3b"
                 } else if !names.isEmpty {
                     self.modelPicker.selectItem(at: 0)
                     self.selectedRunModel = names.first
