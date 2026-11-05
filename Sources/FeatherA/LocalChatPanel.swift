@@ -13,6 +13,7 @@ final class LocalChatView: NSView {
     private let iconView = NSImageView()
     private let nameLabel = NSTextField(labelWithString: "AI")
     private let tabControl = NSSegmentedControl()
+    private let logsToggle = NSButton()
 
     // Chat
     private let chatContainer = NSView()
@@ -79,11 +80,16 @@ final class LocalChatView: NSView {
         nameLabel.textColor = NSColor.white
 
         tabControl.translatesAutoresizingMaskIntoConstraints = false
-        tabControl.segmentCount = 4
+        tabControl.segmentCount = 3
         tabControl.setLabel("Ask", forSegment: 0)
         tabControl.setLabel("Tasks", forSegment: 1)
         tabControl.setLabel("Results", forSegment: 2)
-        tabControl.setLabel(">>", forSegment: 3)
+        logsToggle.translatesAutoresizingMaskIntoConstraints = false
+        logsToggle.title = ">>"
+        logsToggle.bezelStyle = .recessed
+        logsToggle.controlSize = .mini
+        logsToggle.target = self
+        logsToggle.action = #selector(toggleLogsMode(_:))
         tabControl.selectedSegment = 0
         tabControl.target = self
         tabControl.action = #selector(tabChanged(_:))
@@ -93,6 +99,7 @@ final class LocalChatView: NSView {
         headerView.addSubview(iconView)
         headerView.addSubview(nameLabel)
         headerView.addSubview(tabControl)
+        headerView.addSubview(logsToggle)
 
         // Chat
         chatContainer.translatesAutoresizingMaskIntoConstraints = false
@@ -360,8 +367,10 @@ final class LocalChatView: NSView {
             nameLabel.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
             nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: tabControl.leadingAnchor, constant: -4),
 
-            tabControl.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -8),
+            tabControl.trailingAnchor.constraint(equalTo: logsToggle.leadingAnchor, constant: -8),
             tabControl.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+            logsToggle.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -8),
+            logsToggle.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
 
             chatContainer.topAnchor.constraint(equalTo: headerView.bottomAnchor),
             chatContainer.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -480,22 +489,29 @@ final class LocalChatView: NSView {
         }
     }
 
+    @objc func toggleLogsMode(_ sender: Any?) {
+        logsMode = !logsMode
+        if logsMode {
+            tabControl.isHidden = true
+            logsToggle.title = "<<"
+            chatContainer.isHidden = true
+            tasksContainer.isHidden = true
+            resultsContainer.isHidden = true
+            logsContainer.isHidden = false
+        } else {
+            tabControl.isHidden = false
+            logsToggle.title = ">>"
+            chatContainer.isHidden = tabControl.selectedSegment != 0
+            tasksContainer.isHidden = tabControl.selectedSegment != 1
+            resultsContainer.isHidden = tabControl.selectedSegment != 2
+            logsContainer.isHidden = true
+        }
+    }
+
     @objc func tabChanged(_ sender: NSSegmentedControl) {
         if !logsMode {
             // normal mode
-            if sender.selectedSegment == 3 {
-                // toggle to logs mode
-                logsMode = true
-                tabControl.segmentCount = 2
-                tabControl.setLabel("<<", forSegment: 0)
-                tabControl.setLabel("Logs", forSegment: 1)
-                tabControl.selectedSegment = 1
-                chatContainer.isHidden = true
-                tasksContainer.isHidden = true
-                resultsContainer.isHidden = true
-                logsContainer.isHidden = false
-                return
-            }
+            // handled by logsToggle button
             chatContainer.isHidden = sender.selectedSegment != 0
             tasksContainer.isHidden = sender.selectedSegment != 1
             resultsContainer.isHidden = sender.selectedSegment != 2
@@ -581,7 +597,8 @@ final class LocalChatView: NSView {
             let label = NSTextField(labelWithString: String(format: "%2d  %@ %@   %@ · %@ · %@", i+1, enabled ? "●" : "○", name, sched, status, next))
             label.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
             label.textColor = NSColor(calibratedRed: 0.2, green: 1.0, blue: 0.2, alpha: 1.0)
-            label.lineBreakMode = .byTruncatingTail
+            label.lineBreakMode = .byWordWrapping
+            label.maximumNumberOfLines = 0
             label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             let editBtn = NSButton(title: "Edit", target: self, action: #selector(self.editTaskByIndex(_:)))
             editBtn.bezelStyle = .recessed
@@ -1045,6 +1062,13 @@ final class LocalChatView: NSView {
                     self.taskPicker.selectItem(at: idx)
                 }
                 self.loadRunsForTask(taskId: taskId)
+                if self.logsMode {
+                    self.logsMode = false
+                    self.tabControl.isHidden = false
+                    self.logsToggle.title = ">>"
+                }
+                self.tabControl.selectedSegment = 2
+                self.tabChanged(self.tabControl)
             }
         }.resume()
     }
