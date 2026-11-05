@@ -61,6 +61,7 @@ enum Settings {
             "askPanelPosition": "right",
             "saveChatHistory": true,
             "askPanelWidth": 380,
+            "askPanelOpenByDefault": true,
         ])
     }
 
@@ -148,6 +149,12 @@ enum Settings {
     static var askPanelWidth: Double {
         get { d.object(forKey: "askPanelWidth") == nil ? 380 : d.double(forKey: "askPanelWidth") }
         set { d.set(newValue, forKey: "askPanelWidth") }
+    }
+
+    /// Whether the Ask AI side panel opens automatically when a tab/window opens.
+    static var askPanelOpenByDefault: Bool {
+        get { d.object(forKey: "askPanelOpenByDefault") == nil ? true : d.bool(forKey: "askPanelOpenByDefault") }
+        set { d.set(newValue, forKey: "askPanelOpenByDefault") }
     }
 
     /// Whether chat history persists across sessions. When off, history is in-memory only.
