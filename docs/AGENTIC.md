@@ -18,6 +18,21 @@ the user is looking at.
 
 Second step, after the first works: call noskill's local API (`127.0.0.1:11435`) to run a skill on the page.
 
+## Features
+
+Must have:
+- **Schedule tasks**: run a task on a schedule, such as "every morning, summarise the news I saved". Built on noskill's
+  scheduler (`apps/scheduler`, sched), not a new scheduler.
+- **Search and research**: search the web and produce a sourced report. Built on noskill's research tooling
+  (`apps/orcastrator`, STORM-style reports), with citations the user can check.
+
+Nice to have:
+- **Self-healing**: detect a broken page or failed task, retry, or ask the user to fix it. Noskill's healer is the
+  model for this.
+- **Agentic coding**: a coding helper for the page the user is working on (for example a GitHub or docs page).
+
+Order: first the page Q&A experiment (above), then search and research, then scheduled tasks, then the nice-to-haves.
+
 ## Constraints
 
 - Local only: no telemetry, no accounts, no cloud model calls. The browser's own privacy rules still apply.
