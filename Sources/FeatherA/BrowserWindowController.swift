@@ -728,7 +728,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [Item.back, Item.forward, Item.reload, Item.home, Item.ask, Item.video, .flexibleSpace, Item.address, Item.star, .flexibleSpace, Item.downloads, Item.pins, Item.extensions, Item.shield]
+        [Item.back, Item.forward, Item.reload, Item.home, Item.ask, Item.video, Item.shield, .flexibleSpace, Item.address, Item.star, .flexibleSpace, Item.downloads, Item.pins, Item.extensions]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -775,8 +775,8 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
             item.visibilityPriority = .high
             // Centered and capped, shrinking with the window down to a compact minimum.
             addressField.widthAnchor.constraint(greaterThanOrEqualToConstant: 120).isActive = true
-            addressField.widthAnchor.constraint(lessThanOrEqualToConstant: 560).isActive = true
-            let preferred = addressField.widthAnchor.constraint(equalToConstant: 560)
+            addressField.widthAnchor.constraint(lessThanOrEqualToConstant: 340).isActive = true
+            let preferred = addressField.widthAnchor.constraint(equalToConstant: 340)
             preferred.priority = .defaultLow
             preferred.isActive = true
         default: return nil
