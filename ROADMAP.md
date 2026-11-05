@@ -1,49 +1,33 @@
-# Feather Roadmap
+# FeatherA Roadmap
 
-Current version: **0.2.0** (released 2026-11-01). Version **0.4** is the last planned release for now.
+Current AI improvement release: **0.3.0** (2026-11-05). Baseline reference discussed: **0.2.1** (mainline). FeatherA’s 0.3.x line focuses on **local, Ollama-only AI** integrated into a lightweight WebKit browser.
 
-Feather's goals don't change from version to version: very little memory and battery use, especially for
-video; safety on by default; and web standards kept current by the WebKit engine built into macOS.
+Goals (unchanged in spirit): low resource use, safe defaults, and standards/security via system WebKit. AI additions are **opt-in**, local-only, and measured/pragmatic.
 
----
+## 0.3.0 “Local AI & Research” (released in this build)
+- [x] **AI off by default** (opt-in in Settings) with Ollama checks and model guidance.
+- [x] **AI panel**: Ask, Research, Agents, Tasks, Results, `>>` Logs (docked).
+- [x] **Ask**: local Ollama chat with bounded page context.
+- [x] **Research (STORM, Swift-native)**: web-based bundled UI in a new tab, bridged to local Ollama; **no runtime Python / no `:8400`**. Multi-agent pipeline (planning/questions, parallel research, critic/revision, citations/References, multi-source retrieval). **Extended** mode (challenge/rebuttal + draft/review/rewrite).
+- [x] **Agents/Tasks**: local `.md` tasks, explicit runs, in-app scheduling while open, bundled default templates.
+- [x] **Defaults**: `granite4:3b` (never 1B auto-select), web/citations on, extended off; models sorted.
+- [x] **Observability**: console/errors/fetch failures mirrored to `>>` Logs.
+- [x] **Setup**: non-admin Ollama install/start/pull (`scripts/setup.sh`).
+- [x] **Fix**: closing tabs tears down media/webview (no background playback).
 
-## v0.2 "Daily driver" (released)
+## 0.3.x (next, AI polish)
+- [ ] **Research parity/polish**: stronger checkpoint/resume UX, richer source verification/snippets, better handling of rate-limited engines, optional source allow/deny profiles.
+- [ ] **Citations quality**: tighter grounding checks, clearer unsourced labeling, export improvements.
+- [ ] **Performance**: adaptive concurrency/timeouts per model, caching of retrieval within a run, streaming/partial report UX.
+- [ ] **Task/Agent UX**: clearer run history, safer scheduling semantics, import/export tasks, per-task model/preset controls.
+- [ ] **Diagnostics**: one-click “AI status” (Ollama/models/ports/bridge) and actionable errors in UI.
+- [ ] **Tests**: targeted tests for citation/merge logic and bridge protocol (where feasible).
 
-| # | Feature | What you get | Size |
-|---|---------|--------------|------|
-| 1 | **Find in page** | ⌘F opens a find bar; ⌘G / ⇧⌘G jump to the next/previous match; Esc closes it. | S |
-| 2 | **Address bar suggestions** | As you type, matching pages from your history and bookmarks appear under the address bar. Search-engine suggestions are optional and off by default for privacy. | M |
-| 3 | **Reopen closed tab and restore last session** | ⇧⌘T brings back the last closed tab (up to 20). Your tabs come back after a restart or crash. | S |
-| 4 | **Settings window (⌘,)** | Search engine, home page, sleep timer, Shields, HTTPS-only, suggestions, session restore, and a "Make Feather the default browser" button, without needing Terminal. | M |
-| 5 | **Downloads panel** | Progress, cancel, show in Finder, open, and a list of recent downloads (⌥⌘L). | M |
-| 6 | **Per-site Shields** | Turn ad blocking off for just one site when it breaks, from the shield button. | M |
-| 7 | **Tab audio indicator and mute** | 🔊 shows on tabs playing sound; mute a tab with one shortcut. | S |
-| 9 | **App icon and About panel** | A real icon, and an About window showing the Feather, WebKit and macOS versions. | S |
+## 0.4 (browser/product maturity, planned)
+- Signed/notarized distribution & update story (as appropriate).
+- Deeper browser polish (permissions, profiles, reader, etc.) per baseline goals.
+- Extension and platform hardening.
 
-All eight are built and covered by automated tests. Numbers match the original top-10 list; #8 and #10 were moved to later versions.
-
----
-
-## v0.3 "Privacy and power"
-- **Tab shortcuts (from #8):** ⌘1–9 to jump to a tab, ⌥⌘←/→ to switch, and Duplicate Tab.
-- **Site permissions panel:** camera, microphone, autoplay and pop-ups, set per site.
-- **Profiles:** separate cookie jars, for example Work and Personal, so sites can't link them.
-- **Cookie-banner and annoyance hiding:** an optional cosmetic filter list.
-- **Reader mode:** a clean, text-only view of articles.
-- **Bookmark manager window:** search and bulk-edit bookmarks.
-- **Memory view:** memory use per tab, and "Sleep this tab now".
-- **Import history** from Brave or Chrome.
-
-## v0.4 "Sync and release" (final planned version)
-- **iCloud sync** for bookmarks, sessions and settings.
-- **Tab groups and tab search.**
-- **Extension auto-updates** from Firefox Add-ons.
-- **Signed, notarized download with update check (from #10):** installs without Gatekeeper warnings.
-  Needs an Apple Developer account ($99/year).
-
----
-
-## Ideas, not planned
-- An accessibility pass (VoiceOver, keyboard-only use).
-- Translations of the interface.
-- Published memory and battery benchmarks against Brave and Safari.
+## Research baseline vs. AI release
+- Use **0.2.1** (or your chosen baseline tag/build) for non-AI/baseline comparison.
+- Use **0.3.0** for the AI improvement line (Ollama-only, STORM Research, Agents/Tasks). Keep release notes and changelog explicit when publishing both.

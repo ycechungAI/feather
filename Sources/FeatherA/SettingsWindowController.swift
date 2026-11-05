@@ -19,6 +19,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private var aiEnabledBox: NSButton!
     private var aiTasksBox: NSButton!
     private var aiAgentsBox: NSButton!
+    private var aiResearchBox: NSButton!
     private var askPanelOpenByDefaultBox: NSButton!
     private var showHomeButtonBox: NSButton!
     private var clearChatHistoryButton: NSButton!
@@ -99,7 +100,8 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         saveChatHistoryBox = checkbox("Save chat history between sessions", #selector(toggled(_:)))
         aiEnabledBox = checkbox("Enable AI features (off by default; uses local Ollama)", #selector(toggled(_:)))
         aiTasksBox = checkbox("Tasks tab", #selector(toggled(_:)))
-        aiAgentsBox = checkbox("Agents tab", #selector(toggled(_:)))
+        aiAgentsBox = checkbox("Agents tab (scheduler)", #selector(toggled(_:)))
+        aiResearchBox = checkbox("Research tab (Orcastrator)", #selector(toggled(_:)))
         askPanelOpenByDefaultBox = checkbox("Open Ask AI panel by default", #selector(toggled(_:)))
         showHomeButtonBox = checkbox("Show Home button in toolbar (off by default)", #selector(toggled(_:)))
         clearChatHistoryButton = NSButton(title: "Clear chat history", target: self, action: #selector(clearChatHistoryClicked(_:)))
@@ -180,6 +182,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             [label("AI:"), aiEnabledBox],
             [NSGridCell.emptyContentView, aiTasksBox],
             [NSGridCell.emptyContentView, aiAgentsBox],
+            [NSGridCell.emptyContentView, aiResearchBox],
             [NSGridCell.emptyContentView, askPanelOpenByDefaultBox],
             [label("AI panel:"), askPosition],
         ])
@@ -249,8 +252,10 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         aiEnabledBox.state = Settings.aiEnabled ? .on : .off
         aiTasksBox.state = Settings.aiTasksEnabled ? .on : .off
         aiAgentsBox.state = Settings.aiAgentsEnabled ? .on : .off
+        aiResearchBox.state = Settings.aiResearchEnabled ? .on : .off
         aiTasksBox.isEnabled = Settings.aiEnabled
         aiAgentsBox.isEnabled = Settings.aiEnabled
+        aiResearchBox.isEnabled = Settings.aiEnabled
         askPanelOpenByDefaultBox.state = Settings.askPanelOpenByDefault ? .on : .off
         showHomeButtonBox.state = Settings.showHomeButton ? .on : .off
         exceptions.reloadData()
@@ -344,11 +349,14 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             Settings.aiEnabled = on
             aiTasksBox.isEnabled = on
             aiAgentsBox.isEnabled = on
+            aiResearchBox.isEnabled = on
             if on { checkOllamaAndPromptModels() }
         case aiTasksBox:
             Settings.aiTasksEnabled = on
         case aiAgentsBox:
             Settings.aiAgentsEnabled = on
+        case aiResearchBox:
+            Settings.aiResearchEnabled = on
         case askPanelOpenByDefaultBox:
             Settings.askPanelOpenByDefault = on
         case showHomeButtonBox:

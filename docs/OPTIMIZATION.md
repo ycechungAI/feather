@@ -4,6 +4,9 @@ Measured on 2026-10-29 on this Mac, with the release build. Memory is resident m
 FeatherA and the WebKit processes it started, 75 seconds after opening a 4K YouTube video
 (Big Buck Bunny, `aqz-KE-bpKQ`). Numbers vary by about ±5% between runs.
 
+> **0.3.0 AI note (FeatherA):** Local AI features (Ask/Agents/Tasks/Research via Ollama) are **opt-in and off by default**. When AI is off, there is no always-on model/runtime overhead added by these features. Research runs on demand (Swift-native STORM bridged to local Ollama) and uses CPU/memory/network only while active; treat extended runs as workload-dependent. Historical measurements below reflect the baseline browser behavior.
+
+
 ## FeatherA vs Safari and Brave
 Measured on the same Mac (Apple M4, 16 GB, macOS 27.0.1) on 29 October 2026, with
 [bench/bench.py](../bench/bench.py). Memory is the "Memory" figure Activity Monitor shows, summed

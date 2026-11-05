@@ -58,7 +58,7 @@ enum Settings {
             "keepSignedIn": ["google.com", "gmail.com", "youtube.com"],
             "cacheLimitMB": 500,
             "webInspector": false,
-            "askPanelPosition": "right",
+            "askPanelPosition": "bottom",
             "saveChatHistory": true,
             "askPanelWidth": 380,
             "askPanelHeight": 340,
@@ -67,6 +67,7 @@ enum Settings {
             "aiEnabled": false,
             "aiTasksEnabled": false,
             "aiAgentsEnabled": false,
+            "aiResearchEnabled": false,
         ])
     }
 
@@ -145,9 +146,9 @@ enum Settings {
         set { d.set(newValue, forKey: "webInspector") }
     }
 
-    /// Where the Ask AI side panel docks: "right" (default), "left", or "bottom".
+    /// Where the Ask AI panel docks: "bottom" (default), "left", or "right".
     static var askPanelPosition: String {
-        get { d.string(forKey: "askPanelPosition") ?? "right" }
+        get { d.string(forKey: "askPanelPosition") ?? "bottom" }
         set { d.set(newValue, forKey: "askPanelPosition") }
     }
     /// Last width of the Ask AI side panel (for right/left docking).
@@ -188,6 +189,11 @@ enum Settings {
     static var aiAgentsEnabled: Bool {
         get { d.bool(forKey: "aiAgentsEnabled") }
         set { d.set(newValue, forKey: "aiAgentsEnabled") }
+    }
+    /// Show Research tab (Orcastrator integration) in AI panel (requires AI enabled).
+    static var aiResearchEnabled: Bool {
+        get { d.bool(forKey: "aiResearchEnabled") }
+        set { d.set(newValue, forKey: "aiResearchEnabled") }
     }
 
     /// Whether chat history persists across sessions. When off, history is in-memory only.

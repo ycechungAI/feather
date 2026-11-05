@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>FeatherA — Pull Models</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { font-family: -apple-system, system-ui, sans-serif; background:#111; color:#e6e6e6; margin:0; padding:20px; }
+    h1 { font-size:18px; margin:0 0 8px; }
+    p { color:#aaa; margin:0 0 16px; }
+    .box { background:#1b1b1b; border:1px solid #333; border-radius:10px; padding:14px; }
+    button { background:#2f6feb; color:#fff; border:0; border-radius:8px; padding:8px 14px; font-size:14px; cursor:pointer; }
+    button:disabled { opacity:.6; cursor:default; }
+    #log { margin-top:14px; font:12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space:pre-wrap; background:#0b0b0b; border:1px solid #2a2a2a; border-radius:8px; padding:10px; min-height:140px; max-height:50vh; overflow:auto; }
+    .ok { color:#7ee787; }
+    .err { color:#ff7b72; }
+  </style>
+</head>
+<body>
+  <h1>Pull Default Models (Ollama)</h1>
+  <p>Runs in-browser via FeatherA/Ollama API (no links opened). Default models: <b>tev1:0.8b</b>, <b>granite4:3b</b>. Requires Ollama to be running.</p>
+  <div class="box">
+    <button id="pull">Pull default models</button>
+    <button id="pullBoth" style="margin-left:8px;background:#30363d">Pull tev1:0.8b + granite4:3b</button>
+    <div id="log"></div>
+  </div>
+  <script>
+    const logEl = document.getElementById('log');
+    function log(msg, cls){ const d=document.createElement('div'); if(cls) d.className=cls; d.textContent=msg; logEl.appendChild(d); logEl.scrollTop=logEl.scrollHeight; }
+    function run(names){
+      const btn=document.getElementById('pull'), btn2=document.getElementById('pullBoth');
+      btn.disabled=true; btn2.disabled=true; logEl.innerHTML='';
+      log('Starting pull: ' + (names ? names.join(', ') : 'tev1:0.8b, granite4:3b'));
+      const pull = window.featheraPullDefaultModels && !names ? window.featheraPullDefaultModels.bind(window)
+        : function(p,d,e){ const id=(window.__featheraPullId=(window.__featheraPullId||0)+1); if(window.featheraPullModel && names && names.length===1) window.featheraPullModel(names[0],p,d,e); else if(window.featheraPullDefaultModels) window.featheraPullDefaultModels(p,d,e); else { e('Bridge not available. Open this page from FeatherA.'); } };
+      // Prefer streaming via bridge pull_stream for multiple names
+      if (names && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.featheraResearch) {
+        // use featheraPullDefaultModels-like path by calling with names via fetch shim not available; call exposed helper if present
+        // fallback: pull each via featheraPullModel sequentially
+        (async function(){
+          try {
+            for (const n of names) {
+              log('Pulling ' + n + '…');
+              await new Promise((resolve, reject)=>{
+                if (!window.featheraPullModel) return reject('Bridge not available');
+                window.featheraPullModel(n, s=>log(s), _=>resolve(), e=>reject(e));
+              });
+            }
+            log('Done. Refresh models in FeatherA.', 'ok');
+          } catch(e){ log('Error: ' + e, 'err'); }
+          btn.disabled=false; btn2.disabled=false;
+        })();
+        return;
+      }
+      pull(
+        s=>log(s),
+        _=>{ log('Done. Refresh models in FeatherA.', 'ok'); btn.disabled=false; btn2.disabled=false; },
+        e=>{ log('Error: ' + e, 'err'); btn.disabled=false; btn2.disabled=false; }
+      );
+    }
+    document.getElementById('pull').onclick = ()=>run(null);
+    document.getElementById('pullBoth').onclick = ()=>run(['tev1:0.8b','granite4:3b']);
+    // Auto-start when opened from toolbar action
+    if (location.hash === '#auto' || new URLSearchParams(location.search).get('auto') === '1') {
+      setTimeout(()=>run(['tev1:0.8b','granite4:3b']), 300);
+    }
+  </script>
+</body>
+</html>

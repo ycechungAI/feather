@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 /// One browser tab, shown in a TabWindow with FeatherA's own tab strip.
 final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
                                      WKNavigationDelegate, WKUIDelegate, WKWebExtensionTab,
-                                     NSTextFieldDelegate, NSMenuItemValidation {
+                                     WKScriptMessageHandler, NSTextFieldDelegate, NSMenuItemValidation {
     static private(set) var all = Set<BrowserWindowController>()
     private static var privateStore: WKWebsiteDataStore?
 
@@ -27,6 +27,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
     private var reloadButton: NSButton!
     private var homeButton: NSButton!
     private var askButton: NSButton!
+    private var pullModelsButton: NSButton!
     private var shieldButton: NSButton!
     private var newTabButton: NSButton!
     private var starButton: NSButton!
@@ -405,7 +406,28 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         }
         observations = []
         audioObservation = nil
-        webView?.stopLoading()
+        if let webView {
+            // Stop media playback (video/audio) so closing a tab doesn't leave sound playing in background.
+            if #available(macOS 12.0, *) {
+                webView.pauseAllMediaPlayback(completionHandler: nil)
+            }
+            webView.evaluateJavaScript("try{document.querySelectorAll('video,audio').forEach(function(e){try{e.pause();e.removeAttribute('src');e.load();}catch(_){}})}catch(_){}") { _, _ in }
+            webView.stopLoading()
+            webView.loadHTMLString("", baseURL: nil)
+            // Break WKUserContentController retain cycles from add(_:name:).
+            let ucc = webView.configuration.userContentController
+            if #available(macOS 14.0, *) {
+                ucc.removeAllScriptMessageHandlers()
+            } else {
+                for name in ["featherConsole", "featheraResearch"] {
+                    ucc.removeScriptMessageHandler(forName: name)
+                }
+            }
+            webView.navigationDelegate = nil
+            webView.uiDelegate = nil
+            webView.removeFromSuperview()
+            self.webView = nil
+        }
         host = nil
         Self.all.remove(self)
         tabsChanged()
@@ -493,6 +515,121 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         config.allowsAirPlayForMediaPlayback = true
         Self.applyMemoryPreferences(to: config.preferences)
         config.userContentController.add(PiPKeeper.shared, name: MediaScripts.pipMessage)
+        // Forward JS console (F12 console output) to the AI panel Logs.
+        let consoleScript = WKUserScript(source: """
+        (function(){
+          if (window.__featherConsoleHooked) return; window.__featherConsoleHooked = true;
+          function send(level, args){
+            try {
+              if (!window.webkit || !window.webkit.messageHandlers || !window.webkit.messageHandlers.featherConsole) return;
+              var msg = Array.prototype.slice.call(args).map(function(a){
+                try { return typeof a === 'string' ? a : (a instanceof Error ? (a.message + (a.stack ? '\\n'+a.stack : '')) : JSON.stringify(a)); } catch(e){ return String(a); }
+              }).join(' ');
+              if (msg.length > 4000) msg = msg.slice(0,4000) + '…';
+              window.webkit.messageHandlers.featherConsole.postMessage({level: level, message: msg});
+            } catch(e){}
+          }
+          ['log','warn','error','info','debug'].forEach(function(level){
+            var orig = console[level];
+            console[level] = function(){ send(level, arguments); if (orig) try{ orig.apply(console, arguments); }catch(e){} };
+          });
+          window.addEventListener('error', function(e){
+            var msg = (e.message || 'error') + ' (' + (e.filename||location.href||'') + ':' + (e.lineno||'') + ':' + (e.colno||'') + ')';
+            send('error', [msg]);
+          }, true);
+          window.addEventListener('unhandledrejection', function(e){
+            var r = e.reason;
+            send('error', ['Unhandled rejection: ' + (r && r.message ? r.message : String(r)) + (r && r.stack ? '\\n'+r.stack : '')]);
+          });
+          // Mirror fetch failures to Logs (CORS/network/etc. that surface as rejections).
+          var _fetch = window.fetch;
+          if (_fetch) {
+            window.fetch = function(input, init){
+              var url = (typeof input === 'string') ? input : (input && input.url) || '';
+              return _fetch.apply(this, arguments).catch(function(err){
+                send('error', ['[fetch failed] ' + url + ' — ' + (err && err.message ? err.message : String(err))]);
+                throw err;
+              });
+            };
+          }
+          send('log', ['[feathera] Console/log forwarding active → AI panel >> Logs']);
+        })();
+        """, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+        config.userContentController.addUserScript(consoleScript)
+        config.userContentController.add(self, name: "featherConsole")
+        config.userContentController.add(self, name: "featheraResearch")
+        // Native API bridge for bundled Orcastrator UI (web-based, no runtime Python).
+        let researchBridge = WKUserScript(source: Self.researchBridgeJS, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+        config.userContentController.addUserScript(researchBridge)
+        // Orcastrator defaults on bundled UI / :8400: granite4:3b (non-1B fallback), web search on,
+        // inline citations on, extended thinking off, models sorted by name.
+        let orcaScript = WKUserScript(source: """
+        (function(){
+          function isOrcastrator(){
+            if (location.port === '8400') return true;
+            var p = (location.pathname||'') + ' ' + (location.href||'');
+            if (p.indexOf('Orcastrator') >= 0 || p.indexOf('orcastrator') >= 0) return true;
+            return !!(document.getElementById('topic') && document.getElementById('model') && document.getElementById('form'));
+          }
+          if (!isOrcastrator()) {
+            // file:// pages may not have DOM yet; check again.
+            document.addEventListener('DOMContentLoaded', function(){ if(isOrcastrator()) boot(); });
+            return;
+          }
+          boot();
+          function boot(){
+          var DEFAULT_MODEL='granite4:3b';
+          function applyDefaults(){
+            try{
+              var t=document.getElementById('modeToggle'); if(t && !t.__featherInit){ t.checked=true; t.dispatchEvent(new Event('change')); t.__featherInit=true; }
+              var w=document.getElementById('webResearch'); if(w){ w.checked=true; w.dispatchEvent(new Event('change')); }
+              var c=document.getElementById('citations'); if(c){ c.checked=true; }
+              var e=document.getElementById('extended'); if(e){ e.checked=false; }
+              var cw=document.getElementById('chatWebResearch'); if(cw){ cw.checked=true; }
+            }catch(e){}
+          }
+          function is1B(v){ return /(^|[^0-9])1b([^0-9]|$)/i.test((v||'').trim()); }
+          function sortModels(){
+            try{
+              var m=document.getElementById('model'); if(!m || m.dataset.featherSorting==='1') return;
+              var opts=Array.prototype.slice.call(m.options||[]); if(opts.length<2) return;
+              var cur=m.value;
+              var sorted=opts.slice().sort(function(a,b){
+                var av=(a.value||a.text||'').trim(), bv=(b.value||b.text||'').trim();
+                return av.localeCompare(bv, undefined, {numeric:true, sensitivity:'base'});
+              });
+              var same=true; for(var i=0;i<opts.length;i++){ if(opts[i].value!==sorted[i].value){ same=false; break; } }
+              if(same) return;
+              m.dataset.featherSorting='1';
+              sorted.forEach(function(o){ m.appendChild(o); });
+              if(cur){ try{ m.value=cur; }catch(e){} }
+              setTimeout(function(){ try{ m.dataset.featherSorting='0'; }catch(e){} }, 0);
+            }catch(e){ try{ var m2=document.getElementById('model'); if(m2) m2.dataset.featherSorting='0'; }catch(e2){} }
+          }
+          function pick(){
+            try{
+              var m=document.getElementById('model'); if(!m) return;
+              var exact=null, fallback=null;
+              for(var i=0;i<m.options.length;i++){
+                var opt=m.options[i]; var v=(opt.value||opt.text||'').trim(); var vl=v.toLowerCase();
+                if(v===DEFAULT_MODEL || vl.indexOf('granite4:3b')===0){ exact=opt; break; }
+                if(!fallback && !is1B(v) && v) fallback=opt;
+              }
+              var found = exact || fallback;
+              if(found){ if(m.value!==found.value){ m.value=found.value; m.dispatchEvent(new Event('change',{bubbles:true})); } }
+              else if(m.options.length===0 || !m.value){
+                try{ var ex=false; for(var j=0;j<m.options.length;j++) if((m.options[j].value||'')===DEFAULT_MODEL) ex=true; if(!ex){var o=document.createElement('option');o.value=DEFAULT_MODEL;o.text=DEFAULT_MODEL;m.add(o,0);} m.value=DEFAULT_MODEL; }catch(e){}
+              }
+            }catch(e){}
+          }
+          function run(){ applyDefaults(); sortModels(); pick(); }
+          document.addEventListener('DOMContentLoaded',run); window.addEventListener('load',run); setInterval(run,900);
+          var obs=new MutationObserver(function(){ var mm=document.getElementById('model'); if(mm && mm.dataset.featherSorting==='1') return; run(); });
+          function w(){var m=document.getElementById('model'); if(m) obs.observe(m,{childList:true,subtree:true,attributes:true}); else setTimeout(w,300);} w();
+          }
+        })();
+        """, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
+        config.userContentController.addUserScript(orcaScript)
         Shields.shared.apply(to: config.userContentController, addonInstalls: !isPrivate, host: nil)
         shieldsApplied = Settings.shieldsActive(for: nil)
         if !isPrivate { config.webExtensionController = ExtensionManager.shared.controller }
@@ -662,6 +799,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         static let reload = NSToolbarItem.Identifier("reload")
         static let home = NSToolbarItem.Identifier("home")
         static let ask = NSToolbarItem.Identifier("ask")
+        static let pullModels = NSToolbarItem.Identifier("pullModels")
         static let address = NSToolbarItem.Identifier("address")
         static let shield = NSToolbarItem.Identifier("shield")
         static let newTab = NSToolbarItem.Identifier("newTab")
@@ -685,6 +823,8 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         askButton.bezelStyle = .texturedRounded
         askButton.isBordered = false
         askButton.toolTip = "Ask AI (local model)"
+        pullModelsButton = toolbarButton("arrow.down.circle", "Pull default models (tev1:0.8b, granite4:3b)", #selector(pullDefaultModels(_:)))
+        pullModelsButton.toolTip = "Pull default models (Ollama): tev1:0.8b, granite4:3b — opens progress tab"
         shieldButton = toolbarButton("shield.lefthalf.filled", "Shields", #selector(showShieldsMenu(_:)))
         downloadsButton = toolbarButton("arrow.down.circle", "Downloads (⌥⌘L)", #selector(AppDelegate.showDownloads(_:)))
         downloadsButton.target = NSApp.delegate
@@ -737,7 +877,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         var items: [NSToolbarItem.Identifier] = [Item.back, Item.forward, Item.reload]
         if Settings.showHomeButton { items.append(Item.home) }
-        items += [Item.video, Item.shield, Item.ask, .flexibleSpace, Item.address, Item.star, .flexibleSpace, Item.downloads, Item.pins, Item.extensions]
+        items += [Item.video, Item.shield, Item.ask, Item.pullModels, .flexibleSpace, Item.address, Item.star, .flexibleSpace, Item.downloads, Item.pins, Item.extensions]
         return items
     }
 
@@ -755,6 +895,8 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         case Item.home: item.view = homeButton; item.label = "Home"
         case Item.ask:
             item.view = askButton; item.label = "Ask AI (local model)"; item.visibilityPriority = .high
+        case Item.pullModels:
+            item.view = pullModelsButton; item.label = "Pull Models"; item.toolTip = "Pull default models (tev1:0.8b, granite4:3b) with progress"
         case Item.shield: item.view = shieldButton; item.label = "Shields"
         case Item.pins: item.view = extensionPins; item.label = "Pinned Extensions"
         case Item.extensions: item.view = extensionsButton; item.label = "Extensions"
@@ -1503,6 +1645,35 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
     }
 
     /// Ask ▸ Ask Local Model (⌃⌘A): the local model answers about the page. Local only; see docs/AGENTIC.md.
+    private static func bundledPullModelsURL() -> URL? {
+        let fm = FileManager.default
+        if let res = Bundle.main.resourceURL {
+            let u = res.appendingPathComponent("pull-models.html")
+            if fm.fileExists(atPath: u.path) { return u }
+        }
+        let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let dev = repo.appendingPathComponent("Resources/pull-models.html")
+        if fm.fileExists(atPath: dev.path) { return dev }
+        let cwd = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        let rel = cwd.appendingPathComponent("Resources/pull-models.html")
+        if fm.fileExists(atPath: rel.path) { return rel }
+        return nil
+    }
+
+    @objc func pullDefaultModels(_ sender: Any?) {
+        // Top toolbar: pull default Ollama models (tev1:0.8b, granite4:3b) with progress in a new tab.
+        // Uses native bridge + Ollama HTTP API; falls back to scripts/setup.sh if needed.
+        guard let base = Self.bundledPullModelsURL() else {
+            askPanel.appendLog("[pull] pull-models.html not found")
+            return
+        }
+        var comps = URLComponents(url: base, resolvingAgainstBaseURL: false)
+        comps?.fragment = "auto"
+        let url = comps?.url ?? base
+        _ = BrowserWindowController.open(url: url, inTabOf: self.window)
+        askPanel.appendLog("[pull] Opened model pull progress tab (tev1:0.8b, granite4:3b)")
+    }
+
     @objc func askLocalModel(_ sender: Any?) {
         guard let window else { return }
         if !askPanel.isHidden {
@@ -1540,6 +1711,10 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
                 }
             }
         }
+        askPanel.onOpenURL = { [weak self] url in
+            guard let self else { return }
+            _ = BrowserWindowController.open(url: url, inTabOf: self.window)
+        }
         askPanel.onResize = { [weak self] newSize in
             self?.askPanelSizeConstraint?.constant = newSize
             if pos == "left" || pos == "right" {
@@ -1565,7 +1740,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
                 askPanel.topAnchor.constraint(equalTo: findBar.bottomAnchor),
                 askPanel.leadingAnchor.constraint(equalTo: content.leadingAnchor),
                 askPanel.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-                { let c = askPanel.widthAnchor.constraint(equalToConstant: CGFloat(Settings.askPanelWidth)); self.askPanelSizeConstraint = c; return c }(),
+                { let c = askPanel.widthAnchor.constraint(equalToConstant: max(460, CGFloat(Settings.askPanelWidth))); self.askPanelSizeConstraint = c; return c }(),
                 webArea.leadingAnchor.constraint(equalTo: askPanel.trailingAnchor),
             ]
         case "bottom":
@@ -1599,7 +1774,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
                 askPanel.topAnchor.constraint(equalTo: findBar.bottomAnchor),
                 askPanel.trailingAnchor.constraint(equalTo: content.trailingAnchor),
                 askPanel.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-                { let c = askPanel.widthAnchor.constraint(equalToConstant: CGFloat(Settings.askPanelWidth)); self.askPanelSizeConstraint = c; return c }(),
+                { let c = askPanel.widthAnchor.constraint(equalToConstant: max(460, CGFloat(Settings.askPanelWidth))); self.askPanelSizeConstraint = c; return c }(),
                 webArea.trailingAnchor.constraint(equalTo: askPanel.leadingAnchor),
             ]
         }
@@ -1626,6 +1801,398 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         ]
         NSLayoutConstraint.activate(webAreaConstraints)
         askPanel.isHidden = true
+    }
+
+    // MARK: - Native Orcastrator/Research bridge (no runtime Python)
+
+    static let researchBridgeJS: String = """
+    (function(){
+      if (window.__featheraResearchBridgeInstalled) return;
+      window.__featheraResearchBridgeInstalled = true;
+      function flog(level, msg){ try{ console.log(msg); if(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.featherConsole) window.webkit.messageHandlers.featherConsole.postMessage({level:level||'log', message:String(msg)}); }catch(e){} }
+      flog('log','[feathera] Research bridge active (no runtime Python; /api/* -> native)');
+      var pending = {}; // id -> {resolve,reject,controller?,listeners?}
+      var nextId = 1;
+      function post(msg){
+        try {
+          if (!window.webkit || !window.webkit.messageHandlers || !window.webkit.messageHandlers.featheraResearch) {
+            console.error('[feathera] featheraResearch handler missing', Object.keys((window.webkit&&window.webkit.messageHandlers)||{}));
+            return false;
+          }
+          window.webkit.messageHandlers.featheraResearch.postMessage(msg);
+          return true;
+        } catch(e){ console.error('[feathera] featheraResearch post failed', e && e.message ? e.message : e); return false; }
+      }
+      window.__featheraResearchPush = function(id, kind, payload){
+        var p = pending[id]; if(!p) return;
+        try { payload = (typeof payload === 'string') ? JSON.parse(payload) : payload; } catch(e){}
+        if (kind === 'chat_chunk' && p.controller) { p.controller.enqueue(new TextEncoder().encode(String(payload.text||''))); return; }
+        if (kind === 'chat_done') { if(p.controller){ try{p.controller.close();}catch(e){} } delete pending[id]; if(p.resolveFull) p.resolveFull(p); return; }
+        if (kind === 'sse') {
+          var ev = payload.event||'message';
+          // UI does JSON.parse(ev.data), so always provide a JSON string.
+          var data = JSON.stringify(payload.data);
+          if (p.listeners && p.listeners[ev]) p.listeners[ev].forEach(function(fn){ try{ fn({data:data}); }catch(e){} });
+          if (ev === 'close' || ev === 'report' || ev === 'error') { if(p.onclose) try{p.onclose();}catch(e){} }
+          return;
+        }
+        if (kind === 'resolve') { delete pending[id]; p.resolve(payload); return; }
+        if (kind === 'pull_progress') { if(p.onProgress) try{ p.onProgress(String(payload.status||'')); }catch(e){} return; }
+        if (kind === 'pull_done') { delete pending[id]; if(p.onDone) try{ p.onDone(payload); }catch(e){} if(p.resolve) p.resolve(payload); return; }
+        if (kind === 'pull_err') { delete pending[id]; if(p.onErr) try{ p.onErr(String(payload.message||'error')); }catch(e){} if(p.reject) p.reject(new Error(String(payload.message||'error'))); return; }
+        if (kind === 'reject') { delete pending[id]; if(p.controller){ try{p.controller.error(new Error(String(payload.message||'error')));}catch(e){} } if(p.reject) p.reject(new Error(String(payload.message||'error'))); return; }
+      };
+      function isApi(url){ try{ var u=String(url||''); return u.indexOf('/api/models')>=0 || u.indexOf('/api/chat')>=0 || u.indexOf('/api/research')>=0 || u.indexOf('/api/pull')>=0; }catch(e){ return false; } }
+      var origFetch = window.fetch.bind(window);
+      window.fetch = function(input, init){
+        var url = (typeof input === 'string') ? input : (input && input.url) || '';
+        if (!isApi(url)) return origFetch(input, init);
+        var id = nextId++;
+        if (url.indexOf('/api/models') >= 0) {
+          flog('log','[feathera] intercepting /api/models');
+          return new Promise(function(resolve, reject){
+            pending[id] = {resolve: function(data){ flog('log','[feathera] /api/models resolved: ' + (data && data.models ? data.models.length+' models' : '')); resolve(new Response(JSON.stringify(data), {status:200, headers:{'Content-Type':'application/json'}})); }, reject: reject};
+            if (!post({id:id, type:'models', url:url})) {
+              delete pending[id];
+              resolve(new Response(JSON.stringify({models:[], cloud_models:[], error:"FeatherA native bridge not connected (reopen via AI panel → Research tab). If this persists, restart FeatherA."}), {status:200, headers:{'Content-Type':'application/json'}}));
+            }
+          });
+        }
+        if (url.indexOf('/api/chat') >= 0) {
+          var body = {};
+          try { body = init && init.body ? JSON.parse(init.body) : {}; } catch(e){}
+          return new Promise(function(resolve){
+            var s = new ReadableStream({ start: function(c){ pending[id] = pending[id] || {}; pending[id].controller = c; } });
+            post({id:id, type:'chat', body:body});
+            resolve(new Response(s, {status:200, headers:{'Content-Type':'text/plain; charset=utf-8'}}));
+          });
+        }
+        if (url.indexOf('/api/pull') >= 0) {
+          var pbody = {};
+          try { pbody = init && init.body ? JSON.parse(init.body) : {}; } catch(e){}
+          return new Promise(function(resolve, reject){
+            pending[id] = {resolve: function(data){ resolve(new Response(JSON.stringify(data), {status:200, headers:{'Content-Type':'application/json'}})); }, reject: reject};
+            post({id:id, type:'pull', body:pbody});
+          });
+        }
+        return origFetch(input, init);
+      };
+      window.featheraPullModel = function(name, onProgress, onDone, onErr){
+        var id = nextId++;
+        pending[id] = {onProgress:onProgress, onDone:onDone, onErr:onErr};
+        post({id:id, type:'pull_stream', body:{name:name}});
+      };
+      window.featheraPullDefaultModels = function(onProgress, onDone, onErr){
+        var id = nextId++;
+        pending[id] = {onProgress:onProgress, onDone:onDone, onErr:onErr};
+        post({id:id, type:'pull_stream', body:{names:['tev1:0.8b','granite4:3b']}});
+      };
+      function FakeEventSource(url){
+        this.url=url; this.listeners={}; this.onerror=null; this.readyState=1;
+        var id = nextId++; pending[id] = {listeners:this.listeners, onclose:null}; var self=this;
+        pending[id].listeners.error = pending[id].listeners.error || [];
+        this.addEventListener = function(name, fn){ (self.listeners[name]=self.listeners[name]||[]).push(fn); };
+        this.close = function(){ self.readyState=2; post({id:id, type:'research_close'}); delete pending[id]; };
+        // auto-start
+        post({id:id, type:'research', url:String(url)});
+      }
+      var OrigES = window.EventSource;
+      window.EventSource = function(url, cfg){ if (String(url||'').indexOf('/api/research')>=0) return new FakeEventSource(url); return new OrigES(url, cfg); };
+    })();
+    """
+
+    // MARK: WKScriptMessageHandler (console + Research bridge)
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        if message.name == "featherConsole" {
+            guard let body = message.body as? [String: Any],
+                  let level = body["level"] as? String,
+                  let text = body["message"] as? String else { return }
+            let prefix = "[console.\(level)] "
+            let line = text.count > 2000 ? String(text.prefix(2000)) + "…" : text
+            DispatchQueue.main.async { [weak self] in
+                self?.askPanel.appendLog(prefix + line)
+            }
+            return
+        }
+        if message.name == "featheraResearch" {
+            ResearchBridge.handle(message)
+            return
+        }
+    }
+
+    private func handleResearchBridge(_ message: WKScriptMessage) {
+        guard let body = message.body as? [String: Any],
+              let id = body["id"] as? Int,
+              let type = body["type"] as? String else { return }
+        let webView = message.webView
+        switch type {
+        case "models":
+            Task { @MainActor [weak self] in
+                let data = await self?.researchModels() ?? ["models": [], "cloud_models": [], "error": "unavailable"]
+                self?.pushResearch(to: webView, id: id, kind: "resolve", payload: data)
+            }
+        case "chat":
+            let payload = body["body"] as? [String: Any] ?? [:]
+            Task { [weak self] in
+                await self?.researchChat(id: id, webView: webView, body: payload)
+            }
+        case "research":
+            let url = body["url"] as? String ?? ""
+            Task { [weak self] in
+                await self?.researchRun(id: id, webView: webView, url: url)
+            }
+        case "pull_stream":
+            let payload = body["body"] as? [String: Any] ?? [:]
+            Task { [weak self] in
+                await self?.researchPull(id: id, webView: webView, body: payload)
+            }
+        case "research_close":
+            break
+        default:
+            break
+        }
+    }
+
+    private func researchPull(id: Int, webView: WKWebView?, body: [String: Any]) async {
+        // Pull models via Ollama HTTP API and stream progress to the requesting tab (sandbox-safe, no links).
+        var names: [String] = []
+        if let n = body["name"] as? String, !n.isEmpty { names = [n] }
+        if let arr = body["names"] as? [String] { names = arr.filter { !$0.isEmpty } }
+        if names.isEmpty { names = ["tev1:0.8b", "granite4:3b"] }
+        // Quick reachability check
+        if let vurl = URL(string: "http://127.0.0.1:11434/api/version") {
+            var vreq = URLRequest(url: vurl); vreq.timeoutInterval = 2
+            if (try? await URLSession.shared.data(for: vreq)) == nil {
+                pushResearch(to: webView, id: id, kind: "pull_err", payload: ["message": "Ollama is not running. Start Ollama, then press Pull again. (You can run scripts/setup.sh to install/start Ollama and auto-pull tev1:0.8b, granite4:3b.)"])
+                return
+            }
+        }
+        for (idx, name) in names.enumerated() {
+            pushResearch(to: webView, id: id, kind: "pull_progress", payload: ["status": "Pulling \(name) (\(idx+1)/\(names.count))…"])
+            let err = await ollamaPullModel(name: name, webView: webView, id: id)
+            if let err {
+                pushResearch(to: webView, id: id, kind: "pull_err", payload: ["message": "Failed pulling \(name): \(err)"])
+                return
+            }
+        }
+        pushResearch(to: webView, id: id, kind: "pull_done", payload: ["status": "Done: pulled \(names.joined(separator: ", "))"])
+    }
+
+    private func ollamaPullModel(name: String, webView: WKWebView?, id: Int) async -> String? {
+        guard let url = URL(string: "http://127.0.0.1:11434/api/pull") else { return "Bad Ollama URL" }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = 7200
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["name": name, "stream": true])
+        do {
+            let (bytes, resp) = try await URLSession.shared.bytes(for: req)
+            let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            if status != 200 {
+                for try await line in bytes.lines.prefix(2) {
+                    if let d = line.data(using: .utf8), let obj = try? JSONSerialization.jsonObject(with: d) as? [String: Any], let e = obj["error"] as? String { return e }
+                }
+                return "Ollama returned status \(status). Is Ollama running?"
+            }
+            for try await line in bytes.lines {
+                guard let d = line.data(using: .utf8),
+                      let obj = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { continue }
+                if let e = obj["error"] as? String, !e.isEmpty { return e }
+                let st = (obj["status"] as? String) ?? "pulling…"
+                if let completed = obj["completed"] as? Double, let total = obj["total"] as? Double, total > 0 {
+                    let pct = Int((completed / total) * 100)
+                    let mb = Int(completed / 1_048_576), mbt = Int(total / 1_048_576)
+                    pushResearch(to: webView, id: id, kind: "pull_progress", payload: ["status": "\(name): \(st) (\(pct)% • \(mb)/\(mbt) MB)"])
+                } else {
+                    pushResearch(to: webView, id: id, kind: "pull_progress", payload: ["status": "\(name): \(st)"])
+                }
+                if st == "success" { break }
+            }
+            return nil
+        } catch {
+            return "Could not reach Ollama (is it running?). \(error.localizedDescription)"
+        }
+    }
+
+    private func pushResearch(to webView: WKWebView?, id: Int, kind: String, payload: Any) {
+        guard let webView else { return }
+        let jsonData = (try? JSONSerialization.data(withJSONObject: ["_": payload])) ?? Data("{}".utf8)
+        let jsonObj = (try? JSONSerialization.jsonObject(with: jsonData)) as? [String: Any]
+        let inner = jsonObj?["_"] ?? payload
+        let data = (try? JSONSerialization.data(withJSONObject: inner, options: []))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        let escaped = data
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\r")
+        let js = "window.__featheraResearchPush && window.__featheraResearchPush(\(id), '\(kind)', '\(escaped)')"
+        DispatchQueue.main.async { webView.evaluateJavaScript(js, completionHandler: nil) }
+    }
+
+    private func pushResearchSSE(to webView: WKWebView?, id: Int, event: String, data: Any) {
+        let payload: [String: Any] = ["event": event, "data": data]
+        pushResearch(to: webView, id: id, kind: "sse", payload: payload)
+    }
+
+    private func researchModels() async -> [String: Any] {
+        guard let url = URL(string: "http://127.0.0.1:11434/api/tags") else {
+            return ["models": [], "cloud_models": [], "error": "bad ollama url"]
+        }
+        do {
+            let (data, resp) = try await URLSession.shared.data(from: url)
+            guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
+                return ["models": [], "cloud_models": [], "error": "Could not reach Ollama at http://127.0.0.1:11434"]
+            }
+            if let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let models = obj["models"] as? [[String: Any]] {
+                let names = models.compactMap { ($0["name"] as? String) ?? ($0["model"] as? String) }
+                return ["models": names, "cloud_models": [], "error": NSNull()]
+            }
+        } catch {
+            return ["models": [], "cloud_models": [], "error": "Could not reach Ollama at http://127.0.0.1:11434: \(error.localizedDescription)"]
+        }
+        return ["models": [], "cloud_models": [], "error": "no models"]
+    }
+
+    private func researchChat(id: Int, webView: WKWebView?, body: [String: Any]) async {
+        let model = (body["model"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "granite4:3b"
+        let messages = body["messages"] as? [[String: Any]] ?? []
+        guard let url = URL(string: "http://127.0.0.1:11434/api/chat") else {
+            pushResearch(to: webView, id: id, kind: "reject", payload: ["message": "bad ollama url"])
+            return
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = TimeInterval((body["timeout"] as? Double) ?? 300)
+        let payload: [String: Any] = ["model": model, "messages": messages, "stream": true]
+        req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+        do {
+            let (bytes, resp) = try await URLSession.shared.bytes(for: req)
+            guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
+                pushResearch(to: webView, id: id, kind: "reject", payload: ["message": "Ollama chat error"])
+                return
+            }
+            for try await line in bytes.lines {
+                guard let d = line.data(using: .utf8),
+                      let obj = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { continue }
+                if let msg = obj["message"] as? [String: Any], let content = msg["content"] as? String, !content.isEmpty {
+                    pushResearch(to: webView, id: id, kind: "chat_chunk", payload: ["text": content])
+                }
+                if (obj["done"] as? Bool) == true { break }
+            }
+            pushResearch(to: webView, id: id, kind: "chat_done", payload: [:])
+        } catch {
+            pushResearch(to: webView, id: id, kind: "reject", payload: ["message": error.localizedDescription])
+        }
+    }
+
+    private func researchRun(id: Int, webView: WKWebView?, url urlString: String) async {
+        guard let comps = URLComponents(string: urlString) else {
+            pushResearchSSE(to: webView, id: id, event: "error", data: "Invalid research URL")
+            return
+        }
+        func q(_ name: String) -> String? { comps.queryItems?.first(where: {$0.name==name})?.value }
+        let topic = q("topic") ?? ""
+        let model = q("model").flatMap { $0.isEmpty ? nil : $0 } ?? "granite4:3b"
+        let extended = (q("preset") ?? "") == "extended"
+        let useWeb = (q("use_web") ?? "true") != "false"
+        let citations = (q("citations") ?? "true") != "false"
+        guard !topic.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            pushResearchSSE(to: webView, id: id, event: "error", data: "Missing topic")
+            return
+        }
+        pushResearchSSE(to: webView, id: id, event: "progress", data: "Starting research (Swift/native, no Python)… model=\(model)")
+        var sourcesBlock = ""
+        if useWeb {
+            pushResearchSSE(to: webView, id: id, event: "progress", data: "Gathering web context (basic)…")
+            sourcesBlock = await basicWebContext(topic: topic)
+            if !sourcesBlock.isEmpty {
+                pushResearchSSE(to: webView, id: id, event: "progress", data: "Web context collected.")
+            } else {
+                pushResearchSSE(to: webView, id: id, event: "progress", data: "No web context found; using model knowledge.")
+            }
+        } else {
+            pushResearchSSE(to: webView, id: id, event: "progress", data: "Web search off; using model knowledge.")
+        }
+        pushResearchSSE(to: webView, id: id, event: "progress", data: extended ? "Generating extended report…" : "Generating report…")
+        var prompt = "You are a careful research assistant. Write a clear, well-structured markdown report on the following topic.\nTopic: \(topic)\n\n"
+        if !sourcesBlock.isEmpty {
+            prompt += "Use these web sources when relevant. "
+            if citations { prompt += "Cite claims inline like [1], [2] matching the sources. Include a short Sources/References section at the end." }
+            prompt += "\n\nSOURCES:\n\(sourcesBlock)\n\n"
+        } else if citations {
+            prompt += "If you are uncertain, say so. Add a short Notes section.\n\n"
+        }
+        prompt += "Requirements: factual tone, headings, concise bullets where helpful. \(extended ? "Be thorough and detailed." : "Be concise but useful.")"
+        let (report, genErr) = await ollamaGenerate(model: model, prompt: prompt, timeout: extended ? 600 : 300)
+        if let genErr {
+            pushResearchSSE(to: webView, id: id, event: "error", data: genErr)
+        } else if report.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            pushResearchSSE(to: webView, id: id, event: "error", data: "No report generated. Is Ollama running and is model '\(model)' available?")
+        } else {
+            pushResearchSSE(to: webView, id: id, event: "progress", data: "Report ready.")
+            pushResearchSSE(to: webView, id: id, event: "report", data: report)
+        }
+    }
+
+    private func ollamaGenerate(model: String, prompt: String, timeout: TimeInterval) async -> (String, String?) {
+        guard let url = URL(string: "http://127.0.0.1:11434/api/generate") else { return ("", "Bad Ollama URL") }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = timeout
+        let body: [String: Any] = ["model": model, "prompt": prompt, "stream": false]
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        do {
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            if let err = obj?["error"] as? String, !err.isEmpty {
+                if err.localizedCaseInsensitiveContains("not found") {
+                    return ("", "Model '\(model)' is not installed in Ollama. Install it (e.g. `ollama pull \(model)`) or select another model.")
+                }
+                return ("", "Ollama error: \(err)")
+            }
+            guard status == 200, let response = obj?["response"] as? String else {
+                if status == 0 || status == 503 || status == 502 {
+                    return ("", "Could not reach Ollama at http://127.0.0.1:11434. Is Ollama running?")
+                }
+                return ("", "Ollama returned status \(status). Is Ollama running and is model '\(model)' available?")
+            }
+            return (response, nil)
+        } catch {
+            let ns = error as NSError
+            if ns.domain == NSURLErrorDomain && (ns.code == NSURLErrorCannotConnectToHost || ns.code == NSURLErrorTimedOut || ns.code == NSURLErrorNetworkConnectionLost) {
+                return ("", "Could not reach Ollama at http://127.0.0.1:11434. Is Ollama running?")
+            }
+            return ("", "Ollama request failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func basicWebContext(topic: String) async -> String {
+        // Lightweight, built-in retrieval (no Python): Wikipedia API summary/search.
+        let q = topic.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? topic
+        guard let url = URL(string: "https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=\(q)&format=json&srlimit=3&utf8=1") else { return "" }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 10
+        req.setValue("FeatherA/1.0 (local research)", forHTTPHeaderField: "User-Agent")
+        do {
+            let (data, _) = try await URLSession.shared.data(for: req)
+            guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let query = obj["query"] as? [String: Any],
+                  let search = query["search"] as? [[String: Any]], !search.isEmpty else { return "" }
+            var lines: [String] = []
+            for (i, item) in search.prefix(3).enumerated() {
+                let title = (item["title"] as? String) ?? "Source"
+                let snippet = ((item["snippet"] as? String) ?? "").replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+                let page = title.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? title
+                lines.append("[\(i+1)] \(title) - https://en.wikipedia.org/wiki/\(page)\n\(snippet)")
+            }
+            return lines.joined(separator: "\n\n")
+        } catch { return "" }
     }
 
     // MARK: WKNavigationDelegate
