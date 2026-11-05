@@ -24,7 +24,7 @@ enum RouteResult: Equatable {
 struct Router {
     let config: ServicesConfig
 
-    static let threshold = 0.5
+    static let threshold = 0.4
 
     static let instructions = "Which action should handle the request? A page may be open in the browser."
     static let criteria: [String: String] = [

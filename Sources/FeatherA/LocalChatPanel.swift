@@ -96,6 +96,14 @@ final class LocalChatView: NSView {
         history = Settings.saveChatHistory ? Self.loadHistory() : []
         inputField.stringValue = ""
         render()
+        let log = { (m: String) in
+            if let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+                let url = dir.appendingPathComponent("feathera_debug.log")
+                if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write((m + "\n").data(using: .utf8)!); h.closeFile() }
+                else { try? (m + "\n").write(to: url, atomically: true, encoding: .utf8) }
+            }
+        }
+        log("configure: panel=\(self.frame) inputField=\(inputField.frame) sendBtn=\(sendButton.frame) closeBtn=\(closeButton.frame) scroll=\(chatScrollView.frame)")
     }
 
     @objc func sendChatNow() {
@@ -198,7 +206,13 @@ final class LocalChatView: NSView {
             history.append("Feather: Scheduled tasks aren't built yet in this build.")
             render()
         case .unsure:
-            history.append("Feather: The router wasn't sure which action fits. Try again, or ask a page question.")
+            if !pageText.isEmpty {
+                let text = (try? await LocalModel(config: config).ask(question: question, pageText: pageText))
+                    ?? "The local model didn't answer just now. Start Ollama, then try again."
+                history.append("Feather: \(text)")
+            } else {
+                history.append("Feather: The router wasn't sure which action fits. Try again, or ask a page question.")
+            }
             render()
         }
     }
