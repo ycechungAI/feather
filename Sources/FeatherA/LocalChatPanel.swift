@@ -251,6 +251,8 @@ final class LocalChatView: NSView {
 
         // Results
         resultsContainer.translatesAutoresizingMaskIntoConstraints = false
+        resultsContainer.wantsLayer = true
+        resultsContainer.layer?.backgroundColor = NSColor(white: 0.05, alpha: 1).cgColor
         resultsScrollView.translatesAutoresizingMaskIntoConstraints = false
         resultsScrollView.hasVerticalScroller = true
         resultsScrollView.scrollerStyle = .legacy
@@ -268,6 +270,7 @@ final class LocalChatView: NSView {
         if let container = resultsTextView.textContainer {
             container.widthTracksTextView = true
         }
+        resultsTextView.string = "Select a task to view results."
         taskPicker.translatesAutoresizingMaskIntoConstraints = false
         taskPicker.target = self
         taskPicker.action = #selector(taskPicked(_:))
