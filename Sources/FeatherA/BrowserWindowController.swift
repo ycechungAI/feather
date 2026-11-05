@@ -1487,7 +1487,13 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
 
     /// Ask ▸ Ask Local Model (⌃⌘A): the local model answers about the page. Local only; see docs/AGENTIC.md.
     @objc func askLocalModel(_ sender: Any?) {
-        let log = { (m: String) in NSLog("FeatherA-DBG: %@", m) }
+        let log = { (m: String) in
+            if let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+                let url = dir.appendingPathComponent("feathera_debug.log")
+                if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write((m + "\n").data(using: .utf8)!); h.closeFile() }
+                else { try? (m + "\n").write(to: url, atomically: true, encoding: .utf8) }
+            }
+        }
         log("askLocalModel called; webView=\(webView != nil) window=\(window != nil) askPanelHidden=\(askPanel.isHidden)")
         guard let window else { return }
         if !askPanel.isHidden {
@@ -1514,7 +1520,13 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
     }
 
     func showAskPanel(pageText: String) {
-        let log = { (m: String) in NSLog("FeatherA-DBG: %@", m) }
+        let log = { (m: String) in
+            if let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+                let url = dir.appendingPathComponent("feathera_debug.log")
+                if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write((m + "\n").data(using: .utf8)!); h.closeFile() }
+                else { try? (m + "\n").write(to: url, atomically: true, encoding: .utf8) }
+            }
+        }
         log("showAskPanel pageTextLen=\(pageText.count) position=\(Settings.askPanelPosition)")
         askPanel.configure(pageText: pageText)
         NSLayoutConstraint.deactivate(webAreaConstraints + askPanelConstraints)
