@@ -1,12 +1,20 @@
-# Experiment: agentic Feather
+# Experiment: agentic FeatherA
 
 Branch `experiment/agentic`, macOS only. This branch is allowed to get bigger and slower than `main`. It is a
 research branch: it proves whether a small local model and noskill can run inside the browser. If it works, the
 useful parts are merged back into a careful design. `main` stays the small, fast browser.
 
+## Identity: this build is the separate app FeatherA
+
+The agentic build is **FeatherA**, not a tweak of the main Feather app: bundle id `dev.feather.a`,
+display name `FeatherA`, executable `FeatherA`, app icon dark blue. It gets its own sandbox container
+(`~/Library/Containers/dev.feather.a/...`) and its own install path (`/Applications/FeatherA.app`).
+The main Feather app (`dev.feather.browser`) is never touched by this build, so the experiment can
+change the browser freely without breaking the app the user already runs.
+
 ## Goal
 
-Integrate parts of noskill into Feather and rework them for the browser, so a local model can help with the page
+Integrate parts of noskill into FeatherA and rework them for the browser, so a local model can help with the page
 the user is looking at.
 
 ## First experiment (what this branch must prove)
@@ -20,7 +28,7 @@ Second step, after the first works: call noskill's local API (`127.0.0.1:11435`)
 
 ## Integration: call the existing local services (ADR-0017 pattern)
 
-Feather doesn't copy noskill's, sched's or orcastrator's code. It calls the services that already run on this Mac over
+FeatherA doesn't copy noskill's, sched's or orcastrator's code. It calls the services that already run on this Mac over
 `localhost` HTTP, the same way the noskill app does (noskill's ADR-0017). Each service keeps its own data and tests.
 
 | Service | Port | Used for | Endpoints (checked in the noskill repo) |
@@ -30,10 +38,10 @@ Feather doesn't copy noskill's, sched's or orcastrator's code. It calls the serv
 | sched (tasks) | 8787 | scheduled tasks | `GET/POST /api/tasks`, `POST /api/tasks/draft`, `POST /api/tasks/{id}/run`, `GET /api/runs/{id}/report` |
 | research | macOS-native (see below) | search and research reports | chosen later; orcastrator is not used on macOS |
 
-Routes are not hard-coded. They live in a user-editable file, `~/Library/Application Support/Feather/services.json`,
-with the defaults above. When a service changes its routes, the user edits that file; Feather doesn't need a new build.
+Routes are not hard-coded. They live in a user-editable file, `~/Library/Application Support/FeatherA/services.json`,
+with the defaults above. When a service changes its routes, the user edits that file; FeatherA doesn't need a new build.
 
-Rules: only `localhost`; if a service isn't running, Feather shows a clear message and starts nothing itself.
+Rules: only `localhost`; if a service isn't running, FeatherA shows a clear message and starts nothing itself.
 
 Research on macOS should use what macOS already provides, not orcastrator. Candidates to choose from:
 - Apple's on-device Foundation Models framework (`SystemLanguageModel`, macOS 26 or later with Apple Intelligence on).
@@ -42,7 +50,7 @@ Research on macOS should use what macOS already provides, not orcastrator. Candi
 - Apple's Natural Language framework for summaries and keywords, without a model.
 
 Web search itself still needs a source; this is an open choice.
-Feather's new code is the browser side: the panel, the page text, and the forms. The services do the work.
+FeatherA's new code is the browser side: the panel, the page text, and the forms. The services do the work.
 
 ## Models and routing (decided)
 
@@ -50,12 +58,12 @@ Feather's new code is the browser side: the panel, the page text, and the forms.
   - **Router** `tev1:0.8b` [routerModel]: fast decisions, which tool or service handles a request.
   - **Answers** `granite4:3b` [answerModel]: page Q&A and summaries.
   - **Basic** `gemma3:1b` [basicModel]: search and simple agentic tasks.
-- The router is `tev1:0.8b`, a fast decision model. It returns a route (`page_qa`, `search`, `schedule`, `none`) and a confidence. Below 0.5 confidence, or an unknown label, Feather asks the user instead of guessing. Tested live: a page-question with the page open routes to `page_qa` (0.67); a news search with no page routes to `none` at 0.31, which is why the threshold exists. It doesn't accept chat or generate calls. Noskill calls it through
+- The router is `tev1:0.8b`, a fast decision model. It returns a route (`page_qa`, `search`, `schedule`, `none`) and a confidence. Below 0.5 confidence, or an unknown label, FeatherA asks the user instead of guessing. Tested live: a page-question with the page open routes to `page_qa` (0.67); a news search with no page routes to `none` at 0.31, which is why the threshold exists. It doesn't accept chat or generate calls. Noskill calls it through
   Ollama's `POST /v1/systemone` with JSON `{"model", "state", "questions", "keep_alive": -1}` (see noskill
-  `internal/decide/jev.go`). Feather's router must use that same call, not a chat request.
-- **Install choice (user decides):** Feather offers two ways to get Ollama:
-  1. **Standalone:** the user installs Ollama from ollama.com; Feather only checks that it runs.
-  2. **Integrated:** Feather downloads and updates Ollama itself, into `~/Library/Application Support/Feather/`.
+  `internal/decide/jev.go`). FeatherA's router must use that same call, not a chat request.
+- **Install choice (user decides):** FeatherA offers two ways to get Ollama:
+  1. **Standalone:** the user installs Ollama from ollama.com; FeatherA only checks that it runs.
+  2. **Integrated:** FeatherA downloads and updates Ollama itself, into `~/Library/Application Support/FeatherA/`.
   Both work the same way once the server answers on `127.0.0.1:11434`.
 
 ## Design direction (decided): Zen-style

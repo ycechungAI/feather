@@ -1,19 +1,19 @@
-# Feather
+# FeatherA
 
 **Version 0.2.0** · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md)
 
-A tiny macOS browser (about 1 MB). Feather adds no rendering engine of its own: it uses the WebKit engine
+A tiny macOS browser (about 1 MB). FeatherA adds no rendering engine of its own: it uses the WebKit engine
 built into macOS (the same one Safari uses), so it gets web-standards and security updates through
 macOS updates.
 
 ## How it compares
-| | Feather | Safari | Brave |
+| | FeatherA | Safari | Brave |
 |---|---|---|---|
 | App size | **1.1 MB** | built into macOS | 604 MB |
 | Memory, 1 tab | **145 MB** | 289 MB | 593 MB |
 | Memory, 6 busy sites | 1.28 GB | **1.09 GB** | 1.78 GB |
 | Launch to page | **0.70 s** | 1.77 s | 0.87 s |
-| Speedometer 3.1 | 27.0 | same engine as Feather | **28.8** |
+| Speedometer 3.1 | 27.0 | same engine as FeatherA | **28.8** |
 
 Apple M4, macOS 27, October 2026. Full results and method:
 [docs/OPTIMIZATION.md](docs/OPTIMIZATION.md#feather-vs-safari-and-brave).
@@ -43,7 +43,7 @@ Apple M4, macOS 27, October 2026. Full results and method:
   costs almost no memory. Turn this off in Settings, then use **History ▸ Reopen Last Session**
   when you want it.
 - **Picture in Picture:** the PiP button next to Home floats the page's video, on any site, including
-  YouTube and embedded players. If YouTube's next video (or an ad) closes the floating window, Feather reopens it.
+  YouTube and embedded players. If YouTube's next video (or an ad) closes the floating window, FeatherA reopens it.
 - **Download video (⌥⌘S):** the ⤓ button next to PiP saves the page's video while it plays, into
   Downloads. Plain video files download as they are. HLS streams (most sites) are saved part by
   part with your login for the site, as an `.mp4`, or as a `.ts` for older streams (`.ts` plays in
@@ -76,7 +76,7 @@ Click the shield in the toolbar:
 - Right-click empty space on the bar for New Folder….
 - To move a bookmark into or out of a folder (or between folders), use **Move to** in its right-click menu — on the bar or inside a folder popup. **Move Up / Move Down** inside a folder popup reorders items within that folder. Moving a folder into itself or one of its own subfolders is refused.
 - **Bookmarks ▸ Import / Export** uses the standard bookmarks .html file, preserving folders. To move from Brave:
-  Brave ▸ Bookmarks ▸ Bookmark Manager ▸ ⋮ ▸ Export bookmarks, then import that file into Feather.
+  Brave ▸ Bookmarks ▸ Bookmark Manager ▸ ⋮ ▸ Export bookmarks, then import that file into FeatherA.
 
 ## Sessions
 - **Sessions ▸ Save Tabs as Session…** saves the frontmost window's tabs under a name you choose.
@@ -84,13 +84,13 @@ Click the shield in the toolbar:
   (or a new window). Each session also offers **Rename…** and **Delete**.
 
 ## Tabs
-Feather draws its own tab strip under the toolbar, like Chrome and Brave.
+FeatherA draws its own tab strip under the toolbar, like Chrome and Brave.
 - Tabs have a fixed width from the left and shrink only when the window is full; past that, the »
   button at the right lists every tab. **+** (or ⌘T, or double-clicking empty strip space) opens a tab.
 - **Close:** the × on a tab, a middle click, or ⌘W (the tab, not the window; ⇧⌘W closes the window).
 - **Switch:** click, ⌘1–⌘8 (⌘9 is the last tab), ⌃Tab / ⌃⇧Tab, or ⇧⌘[ / ⇧⌘].
 - **Move:** drag a tab along the strip to reorder it. Drag it off the strip to give it its own window,
-  or onto another Feather window to move it there. Window ▸ Move Tab to New Window does the same.
+  or onto another FeatherA window to move it there. Window ▸ Move Tab to New Window does the same.
 - **Right-click a tab** for New Tab, Reload, Mute, **Pin Tab**, **Add Tab to Group** (or New Group…),
   Remove from Group, Close Tab, Close Other Tabs and Move Tab to New Window.
 - **Pinned tabs** are narrow, at the left, and show only a site badge (the site's first letter).
@@ -125,49 +125,49 @@ it, so the group keeps all of them. Private windows can't use groups.
 - **History ▸ Clear History… (⇧⌘⌫):** remove the last hour, today, today and yesterday, or all
   history. You can also clear cookies, cache and site data. You stay signed in to Google, Gmail and
   YouTube: their cookies are kept.
-- Private windows never record history. History is stored only on this Mac, in Feather's sandbox
+- Private windows never record history. History is stored only on this Mac, in FeatherA's sandbox
   folder, and keeps the last 7 days.
 
 ## Firefox extensions
-Feather runs Firefox add-ons (WebExtensions) through WebKit's built-in extension support.
-- On addons.mozilla.org, click **Add to Feather**, the button Mozilla normally shows as
+FeatherA runs Firefox add-ons (WebExtensions) through WebKit's built-in extension support.
+- On addons.mozilla.org, click **Add to FeatherA**, the button Mozilla normally shows as
   "Download Firefox". Clicking any `.xpi` link also starts the install.
 - Installed add-ons are pinned to the toolbar, left of the 🧩 button. Click one to open its panel,
   or right-click it to unpin it, open its settings, or remove it. Unpinned add-ons stay in the 🧩 menu.
 - 🧩 ▸ **Install Add-on from File…** accepts a `.xpi`, a `.zip`, or an unpacked folder.
-- Before anything installs, Feather lists the access the add-on wants. Extensions never run in
+- Before anything installs, FeatherA lists the access the add-on wants. Extensions never run in
   private windows.
 - 🧩 ▸ **Manage Extensions** turns add-ons on or off, opens their settings, or removes them.
 - **Limits:** most popular add-ons work, such as Dark Reader, password managers and translators.
   Add-ons that rely on Firefox-only features, like blocking `webRequest`, sidebars or themes, may
-  only partly work. Feather's built-in Shields already block ads.
+  only partly work. FeatherA's built-in Shields already block ads.
 
 ## How engine & security updates work
 The web engine is Apple's WebKit, built into macOS. Apple ships its security fixes through
 macOS updates and urgent Background Security Improvements. Keep **System Settings ▸ General ▸
-Software Update ▸ Automatic Updates** turned on, and Feather is patched without a rebuild.
+Software Update ▸ Automatic Updates** turned on, and FeatherA is patched without a rebuild.
 
 ## What it does NOT do
 No telemetry, no accounts, no background processes, no login items, and no network calls of its own.
 The one exception is search suggestions, which are off unless you turn them on in Settings.
-It runs only when you open it. All source code is in `Sources/Feather`.
+It runs only when you open it. All source code is in `Sources/FeatherA`.
 
 ## Install
-Download `Feather-0.2.0.zip` from [Releases](https://github.com/ycechungAI/feather/releases), unzip it
-and move `Feather.app` to Applications. Feather needs macOS 15.4 or later.
+Download `FeatherA-0.2.0.zip` from [Releases](https://github.com/ycechungAI/feather/releases), unzip it
+and move `FeatherA.app` to Applications. FeatherA needs macOS 15.4 or later.
 
-Feather isn't notarized by Apple yet (planned for v0.4), so macOS blocks it the first time. To open it,
-either right-click `Feather.app` and choose **Open**, or go to **System Settings ▸ Privacy & Security**
+FeatherA isn't notarized by Apple yet (planned for v0.4), so macOS blocks it the first time. To open it,
+either right-click `FeatherA.app` and choose **Open**, or go to **System Settings ▸ Privacy & Security**
 and click **Open Anyway**. You can also run:
 
-    xattr -dr com.apple.quarantine /Applications/Feather.app
+    xattr -dr com.apple.quarantine /Applications/FeatherA.app
 
-You can check the download against `Feather-0.2.0.zip.sha256` on the release page.
+You can check the download against `FeatherA-0.2.0.zip.sha256` on the release page.
 
 ## Build & run
-    scripts/build-app.sh              # creates build/Feather.app
+    scripts/build-app.sh              # creates build/FeatherA.app
     scripts/build-app.sh --install    # also copies it to /Applications
-    open build/Feather.app
+    open build/FeatherA.app
     scripts/test.sh                   # runs the unit tests
 
 Only the Xcode Command Line Tools are needed, not full Xcode. The scripts use SwiftPM's native build
@@ -177,7 +177,7 @@ Command Line Tools in Swift 6.4. The tests use Swift Testing, which the Command 
 
 The tests (214) cover the address bar, tracking-parameter removal, HTTPS upgrades, which requests
 Shields blocks, navigation decisions (`javascript:` links, opening other apps), downloads, history,
-bookmarks, tabs and sessions. The scripts Feather puts into pages (Picture in Picture, YouTube ads)
+bookmarks, tabs and sessions. The scripts FeatherA puts into pages (Picture in Picture, YouTube ads)
 run in JavaScriptCore against a small fake page, so they're tested without a browser.
 
 Building on an ExFAT or FAT drive works: the build script removes the hidden `._*` files that macOS
@@ -188,7 +188,7 @@ creates on those drives, which would otherwise break the app's signature.
 Then choose **Shields ▸ Reload Blocklists**.
 
 ## Settings (⌘,)
-**Feather ▸ Settings** covers:
+**FeatherA ▸ Settings** covers:
 - Search engine: Google, DuckDuckGo, Bing, Brave Search, Startpage, or a custom search URL.
 - Home page.
 - How long background tabs wait before sleeping.
@@ -197,15 +197,15 @@ Then choose **Shields ▸ Reload Blocklists**.
 - Search suggestions.
 - Restoring tabs on launch.
 - Sites with Shields off.
-- A button to make Feather your default browser (macOS asks you to confirm).
+- A button to make FeatherA your default browser (macOS asks you to confirm).
 - Developer: **Inspect Element** in a page's right-click menu, and **View ▸ Show Web Inspector (⌥⌘I)**,
   with the console, network and page elements. Off by default, because the inspector can read
   everything on a page.
-- To find out why a page fails to load, start Feather from Terminal with `FEATHER_DEBUG=1`
-  (`FEATHER_DEBUG=1 /Applications/Feather.app/Contents/MacOS/Feather`). It logs every page request,
+- To find out why a page fails to load, start FeatherA from Terminal with `FEATHERA_DEBUG=1`
+  (`FEATHERA_DEBUG=1 /Applications/FeatherA.app/Contents/MacOS/FeatherA`). It logs every page request,
   each response saved as a download, each failed load and each page crash.
 
 Changes take effect right away. The same values can still be set from Terminal, for example:
 
-    defaults write dev.feather.browser searchURL "https://duckduckgo.com/?q="
-    defaults write dev.feather.browser suspendMinutes -int 20
+    defaults write dev.feather.a searchURL "https://duckduckgo.com/?q="
+    defaults write dev.feather.a suspendMinutes -int 20

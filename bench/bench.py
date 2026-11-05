@@ -2,13 +2,13 @@
 """Compares browsers on footprint, memory, launch speed, page loads, Speedometer and idle CPU.
 
 Usage:
-    bench/bench.py feather path/to/Feather.app [name] # a Feather build; name defaults to "feather"
+    bench/bench.py feather path/to/FeatherA.app [name] # a FeatherA build; name defaults to "feather"
                                                      # (e.g. "feather-rust" for the Rust prototype)
     bench/bench.py brave                             # Brave, with a throwaway profile
     bench/bench.py safari                            # Safari (uses your real Safari profile)
-    bench/bench.py all path/to/Feather.app           # both, then a comparison table
+    bench/bench.py all path/to/FeatherA.app           # both, then a comparison table
 
-Feather runs as a copy with its own bundle identifier (dev.feather.bench), so it gets its own
+FeatherA runs as a copy with its own bundle identifier (dev.feather.bench), so it gets its own
 sandbox folder and never touches your real history, cache, cookies or saved tabs. Brave runs with
 a temporary profile. Results are written to bench/results/<name>.json.
 
@@ -20,7 +20,7 @@ What each number means:
   its helper processes (WebKit's or Chromium's), so shared code isn't counted twice the way RSS does.
 - idle_cpu_pct: CPU used by all its processes while those six tabs sit idle for 30 s
   (100% = one core).
-- Page loads and Speedometer come from bench/engine/main.swift for Feather (its WebKit settings and
+- Page loads and Speedometer come from bench/engine/main.swift for FeatherA (its WebKit settings and
   blocker) and from the DevTools protocol for Brave.
 """
 import base64
@@ -159,7 +159,7 @@ class Pings:
                     pings.event.set()
                     body = b"ok"
                 else:
-                    body = (b"<!doctype html><title>Feather bench</title><h1>Hello</h1>"
+                    body = (b"<!doctype html><title>FeatherA bench</title><h1>Hello</h1>"
                             b"<script>addEventListener('load',()=>requestAnimationFrame(()=>"
                             b"fetch('/ping?'+Date.now())))</script>")
                 self.send_response(200)
@@ -176,15 +176,15 @@ class Pings:
 
 # MARK: - Browsers
 
-class Feather:
+class FeatherA:
     def __init__(self, app, name="feather"):
         self.name = name
         self.source = os.path.abspath(app)
-        self.app = os.path.join(tempfile.mkdtemp(prefix="feather-bench-"), "Feather Bench.app")
+        self.app = os.path.join(tempfile.mkdtemp(prefix="feather-bench-"), "FeatherA Bench.app")
         shutil.copytree(self.source, self.app, symlinks=True)
         plist = os.path.join(self.app, "Contents/Info.plist")
         subprocess.run(["/usr/libexec/PlistBuddy", "-c", f"Set :CFBundleIdentifier {BENCH_ID}", plist], check=True)
-        entitlements = os.path.join(os.path.dirname(HERE), "Support/Feather.entitlements")
+        entitlements = os.path.join(os.path.dirname(HERE), "Support/FeatherA.entitlements")
         subprocess.run(["codesign", "--force", "--options", "runtime", "--entitlements", entitlements,
                         "--sign", "-", self.app], check=True, capture_output=True)
         self.container = os.path.expanduser(f"~/Library/Containers/{BENCH_ID}")
@@ -215,11 +215,11 @@ class Feather:
         self.pid = None
 
     def engine(self):
-        """Page loads and Speedometer, in Feather's WebKit setup (bench/engine/main.swift)."""
+        """Page loads and Speedometer, in FeatherA's WebKit setup (bench/engine/main.swift)."""
         exe = os.path.join(RESULTS, "engine")
         src = [os.path.join(HERE, "engine/main.swift")]
         root = os.path.dirname(HERE)
-        src.append(os.path.join(root, "Sources/Feather/Blocklist.swift"))
+        src.append(os.path.join(root, "Sources/FeatherA/Blocklist.swift"))
         subprocess.run(["swiftc", "-O", "-o", exe] + src, check=True)
         out = subprocess.run([exe, json.dumps({"sites": LOAD_SITES, "speedometer": SPEEDOMETER})],
                              stdout=subprocess.PIPE, text=True, timeout=1500).stdout  # progress goes to stderr
@@ -272,7 +272,7 @@ class Brave:
 class Safari:
     """Safari has no separate profiles, so this uses your real one: the test pages land in your
     Safari history. Speedometer and page loads need Safari's "Allow Remote Automation" (set with
-    an administrator password), so they're skipped; Safari runs the same WebKit as Feather."""
+    an administrator password), so they're skipped; Safari runs the same WebKit as FeatherA."""
     name = "safari"
 
     def __init__(self):
@@ -471,7 +471,7 @@ def main():
     pings = Pings()
     results = []
     if what in ("feather", "all"):
-        results.append(measure(Feather(sys.argv[2], sys.argv[3] if what == "feather" and len(sys.argv) > 3 else "feather"), pings))
+        results.append(measure(FeatherA(sys.argv[2], sys.argv[3] if what == "feather" and len(sys.argv) > 3 else "feather"), pings))
     if what in ("brave", "all"):
         results.append(measure(Brave(), pings))
     if what == "safari":

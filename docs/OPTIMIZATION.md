@@ -1,15 +1,15 @@
 # Memory and disk: what was measured, what changed, what didn't help
 
 Measured on 2026-10-29 on this Mac, with the release build. Memory is resident memory (RSS) of
-Feather and the WebKit processes it started, 75 seconds after opening a 4K YouTube video
+FeatherA and the WebKit processes it started, 75 seconds after opening a 4K YouTube video
 (Big Buck Bunny, `aqz-KE-bpKQ`). Numbers vary by about ±5% between runs.
 
-## Feather vs Safari and Brave
+## FeatherA vs Safari and Brave
 Measured on the same Mac (Apple M4, 16 GB, macOS 27.0.1) on 29 October 2026, with
 [bench/bench.py](../bench/bench.py). Memory is the "Memory" figure Activity Monitor shows, summed
 over the browser and all of its helper processes. Each figure comes from one run.
 
-| | Feather | Safari | Brave |
+| | FeatherA | Safari | Brave |
 |---|---|---|---|
 | App on disk | **1.1 MB** | built into macOS | 604 MB |
 | Data written during the test | **64 MB** | not separable | 144 MB |
@@ -24,11 +24,11 @@ over the browser and all of its helper processes. Each figure comes from one run
 - Brave ran with a fresh, empty profile. Safari ran with the everyday profile (it has no separate
   profiles), which may slow its launch.
 - Speedometer couldn't run in Safari without turning on Safari's remote automation. Safari uses the
-  same WebKit engine as Feather.
-- **Finding (on hold):** Feather's high CPU with the six tabs comes from **CNN's page**. Measured
+  same WebKit engine as FeatherA.
+- **Finding (on hold):** FeatherA's high CPU with the six tabs comes from **CNN's page**. Measured
   one site at a time, CNN alone drove WebKit's networking process to about 51% (82% in total),
   while Wikipedia, GitHub, Reddit, Amazon and YouTube each stayed under 1%. It happened with Shields
-  off too, so it's the page's own activity, not Feather's blocker. An earlier note blaming the
+  off too, so it's the page's own activity, not FeatherA's blocker. An earlier note blaming the
   blocking rules was wrong: those runs only looked calm by chance. Safari's 4% was probably a
   quieter moment on CNN. Paused, since memory matters more than CPU and the cause is the site.
 - Page-load times are left out on purpose. WebKit fires the page's load event later than Chromium
@@ -40,12 +40,12 @@ over the browser and all of its helper processes. Each figure comes from one run
 | Process | Memory | What it is |
 |---|---|---|
 | WebContent (the YouTube page) | 880–930 MB | YouTube's own scripts, page layout and video buffers |
-| Feather (the app) | ~123 MB | Windows, toolbar, AppKit, the WebKit UI side |
+| FeatherA (the app) | ~123 MB | Windows, toolbar, AppKit, the WebKit UI side |
 | GPU | ~80 MB | Drawing the page and decoding video |
 | Networking | ~32 MB | Downloads, cache, cookies |
 | **Total** | **~1,160 MB** | |
 
-**The YouTube page process is about 77% of the total. Feather's own code is a small part of the
+**The YouTube page process is about 77% of the total. FeatherA's own code is a small part of the
 ~123 MB app process.** Most of that is AppKit and WebKit frameworks, which any app showing a web
 view loads. This is the main fact behind the language question below.
 
@@ -56,7 +56,7 @@ it was 781 MB, and much bigger on fuller profiles.
 
 - 185 files over 1 MB used about 620 MB (~80%). 134 of them were video chunks (`video/MP2T`). About
   50 were JavaScript, CSS or WebAssembly bundles, which sites need on every visit.
-- Feather now reads each cache entry's `Content-Type` and drops video, audio, and images or unknown
+- FeatherA now reads each cache entry's `Content-Type` and drops video, audio, and images or unknown
   types over 1 MB. It keeps code, styles and fonts at any size. Only the 20 most visited sites, plus
   open tabs, keep a cache. The total cap is 500 MB by default and can be raised in Settings.
 - Result on the real profile: **781 MB → 55 MB**, and YouTube, Google and other sites still loaded.
@@ -79,14 +79,14 @@ the video is confirmed to be playing before any conclusion.
 ## Screen rendering
 
 Pages are already drawn by WebKit's GPU process with hardware compositing, and video uses Apple's
-hardware decoders. Feather's UI is native AppKit, and the tab bar is the system's. There is no
+hardware decoders. FeatherA's UI is native AppKit, and the tab bar is the system's. There is no
 software rendering path to remove. Hidden pages now run their timers less often, which saves CPU,
 not memory. Further rendering gains would have to come from WebKit itself.
 
 ## Other languages
 
 The shell (tabs, toolbar, settings) is about 6,300 lines of Swift. Rewriting it changes only the
-small part of the ~123 MB app process that is Feather's own code. It cannot change the ~1 GB YouTube
+small part of the ~123 MB app process that is FeatherA's own code. It cannot change the ~1 GB YouTube
 page, because that runs in WebKit's processes whatever language drives them.
 
 | Option | Expected effect on memory and disk | Notes |

@@ -1,4 +1,4 @@
-// Draws Feather's app icon and writes Support/Feather.icns.
+// Draws FeatherA's app icon and writes Support/FeatherA.icns.
 // Usage: swift scripts/make-icon.swift   (needs only the Command Line Tools)
 import AppKit
 
@@ -23,8 +23,8 @@ func drawIcon(size: CGFloat) -> NSBitmapImageRep {
     NSColor.black.setFill()
     shape.fill()
     NSGraphicsContext.restoreGraphicsState()
-    NSGradient(colors: [NSColor(srgbRed: 0.10, green: 0.75, blue: 0.80, alpha: 1),
-                        NSColor(srgbRed: 0.16, green: 0.36, blue: 0.86, alpha: 1)])!
+    NSGradient(colors: [NSColor(srgbRed: 0.05, green: 0.12, blue: 0.45, alpha: 1),
+                        NSColor(srgbRed: 0.02, green: 0.06, blue: 0.26, alpha: 1)])!
         .draw(in: shape, angle: -90)
 
     // A white feather, drawn upright then rotated 40° around the icon's centre.
@@ -48,7 +48,7 @@ func drawIcon(size: CGFloat) -> NSBitmapImageRep {
     vane.fill()
 
     // Barb notches and the quill.
-    NSColor(srgbRed: 0.16, green: 0.45, blue: 0.86, alpha: 0.55).setStroke()
+    NSColor(srgbRed: 0.45, green: 0.65, blue: 1.0, alpha: 0.6).setStroke()
     for (y, dx) in [(700.0, 70.0), (600, 95), (500, 95)] as [(CGFloat, CGFloat)] {
         for side in [-1.0, 1.0] as [CGFloat] {
             let barb = NSBezierPath()
@@ -64,7 +64,7 @@ func drawIcon(size: CGFloat) -> NSBitmapImageRep {
     quill.lineCapStyle = .round
     quill.move(to: p(512, 820))
     quill.line(to: p(512, 160))
-    NSColor(srgbRed: 0.10, green: 0.30, blue: 0.70, alpha: 0.7).setStroke()
+    NSColor(srgbRed: 0.5, green: 0.72, blue: 1.0, alpha: 0.85).setStroke()
     quill.stroke()
     ctx.restoreGState()
 
@@ -73,7 +73,7 @@ func drawIcon(size: CGFloat) -> NSBitmapImageRep {
 }
 
 let root = URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent().deletingLastPathComponent()
-let iconset = FileManager.default.temporaryDirectory.appendingPathComponent("Feather.iconset")
+let iconset = FileManager.default.temporaryDirectory.appendingPathComponent("FeatherA.iconset")
 try? FileManager.default.removeItem(at: iconset)
 try FileManager.default.createDirectory(at: iconset, withIntermediateDirectories: true)
 for base in [16, 32, 128, 256, 512] {
@@ -84,12 +84,12 @@ for base in [16, 32, 128, 256, 512] {
         try data.write(to: iconset.appendingPathComponent(name))
     }
 }
-let out = root.appendingPathComponent("Support/Feather.icns")
+let out = root.appendingPathComponent("Support/FeatherA.icns")
 let task = Process()
 task.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")
 task.arguments = ["-c", "icns", iconset.path, "-o", out.path]
 try task.run()
 task.waitUntilExit()
 try? drawIcon(size: 512).representation(using: .png, properties: [:])!
-    .write(to: FileManager.default.temporaryDirectory.appendingPathComponent("Feather-preview.png"))
+    .write(to: FileManager.default.temporaryDirectory.appendingPathComponent("FeatherA-preview.png"))
 print(task.terminationStatus == 0 ? "Wrote \(out.path)" : "iconutil failed")

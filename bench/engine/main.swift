@@ -1,5 +1,5 @@
-// bench/engine/main.swift: page loads and Speedometer in Feather's WebKit setup, for bench/bench.py.
-// Built together with Sources/Feather/Blocklist.swift so the ad-blocking rules are the real ones.
+// bench/engine/main.swift: page loads and Speedometer in FeatherA's WebKit setup, for bench/bench.py.
+// Built together with Sources/FeatherA/Blocklist.swift so the ad-blocking rules are the real ones.
 // Usage: engine '{"sites": [...], "speedometer": "https://..."}'   (prints one JSON line)
 import AppKit
 import WebKit
@@ -70,7 +70,7 @@ func run() async {
     let app = NSApplication.shared
     let window = NSWindow(contentRect: NSRect(x: 80, y: 80, width: 1280, height: 860),
                           styleMask: [.titled, .resizable], backing: .buffered, defer: false)
-    window.title = "Feather engine benchmark"
+    window.title = "FeatherA engine benchmark"
     window.makeKeyAndOrderFront(nil)
     window.orderFrontRegardless()
     app.activate(ignoringOtherApps: true)
