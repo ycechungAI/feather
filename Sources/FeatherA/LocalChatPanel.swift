@@ -21,7 +21,7 @@ final class LocalChatView: NSView {
     private let tasksContainer = NSView()
     private let tasksScrollView = NSScrollView()
     private let tasksTextView = NSTextView()
-    private let taskRowsStack = NSStackView()
+    private let taskRowsStack = FlippedStackView()
     private let tasksContentStack = FlippedStackView()
     private let resultsContainer = NSView()
     private let resultsScrollView = NSScrollView()
@@ -38,6 +38,9 @@ final class LocalChatView: NSView {
     private let taskButtonBar = NSStackView()
     private let taskBottomBar = NSStackView()
     private let taskFilterPicker = NSPopUpButton()
+    private let taskPageBar = NSStackView()
+    private var currentTaskPage: Int = 0
+    private let tasksPerPage: Int = 5
     private var taskButtons: [NSButton] = []
     private var currentTasks: [[String: Any]] = []
     private let chatScrollView = NSScrollView()
@@ -246,12 +249,10 @@ final class LocalChatView: NSView {
         tasksContainer.addSubview(taskButtonBar)
         tasksContainer.addSubview(taskBottomBar)
         taskBottomBar.addArrangedSubview(taskFilterPicker)
-        let tasksUp = NSButton(title: "<", target: self, action: #selector(scrollTasksUp(_:)))
-        let tasksDown = NSButton(title: ">", target: self, action: #selector(scrollTasksDown(_:)))
-        tasksUp.bezelStyle = .recessed; tasksUp.controlSize = .mini
-        tasksDown.bezelStyle = .recessed; tasksDown.controlSize = .mini
-        taskBottomBar.addArrangedSubview(tasksUp)
-        taskBottomBar.addArrangedSubview(tasksDown)
+        taskPageBar.orientation = .horizontal
+        taskPageBar.spacing = 2
+        taskPageBar.alignment = .centerY
+        taskBottomBar.addArrangedSubview(taskPageBar)
         taskFilterPicker.widthAnchor.constraint(lessThanOrEqualToConstant: 120).isActive = true
         taskButtonBar.translatesAutoresizingMaskIntoConstraints = false
         taskButtonBar.orientation = .vertical
@@ -604,7 +605,16 @@ final class LocalChatView: NSView {
 
     private func buildTaskRows(tasks: [[String: Any]]) {
         for v in taskRowsStack.arrangedSubviews { taskRowsStack.removeArrangedSubview(v); v.removeFromSuperview() }
-        let makeRow: (Int, [String: Any]) -> NSStackView = { i, t in
+        let totalPages = max(1, Int(ceil(Double(tasks.count) / Double(tasksPerPage))))
+        if currentTaskPage >= totalPages { currentTaskPage = totalPages - 1 }
+        if currentTaskPage < 0 { currentTaskPage = 0 }
+        let start = currentTaskPage * tasksPerPage
+        let end = min(start + tasksPerPage, tasks.count)
+        let pageTasks = Array(tasks[start..<end])
+        let pageOffset = start
+        updateTaskPageControls(totalPages: totalPages)
+        let makeRow: (Int, [String: Any]) -> NSStackView = { globalIndex, t in
+            let i = globalIndex
             let name = t["name"] as? String ?? "?"
             let enabled = t["enabled"] as? Bool ?? false
             let sched = t["schedule"] as? String ?? "?"
@@ -623,13 +633,9 @@ final class LocalChatView: NSView {
             numLabel.widthAnchor.constraint(equalToConstant: 22).isActive = true
             let label = NSTextField(labelWithString: String(format: "%@ %@   %@ · %@ · %@", enabled ? "●" : "○", name, sched, status, next))
             label.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
-            if self.panelPosition == "bottom" {
-                label.lineBreakMode = .byWordWrapping
-                label.maximumNumberOfLines = 0
-            } else {
-                label.lineBreakMode = .byTruncatingTail
-                label.maximumNumberOfLines = 1
-            }
+            // test: 3 max rows per task
+            label.lineBreakMode = .byWordWrapping
+            label.maximumNumberOfLines = 3
             let rowColor: NSColor
             switch status {
             case "running": rowColor = NSColor(calibratedRed: 1.0, green: 1.0, blue: 0.2, alpha: 1.0)
@@ -668,8 +674,8 @@ final class LocalChatView: NSView {
                 st.setContentHuggingPriority(.defaultLow, for: .horizontal)
                 return st
             }
-            for (i, t) in tasks.enumerated() {
-                cols[i % ncols].addArrangedSubview(makeRow(i, t))
+            for (i, t) in pageTasks.enumerated() {
+                cols[i % ncols].addArrangedSubview(makeRow(pageOffset + i, t))
             }
             let container = NSStackView(views: cols)
             container.orientation = .horizontal
@@ -678,8 +684,8 @@ final class LocalChatView: NSView {
             container.distribution = .fillEqually
             taskRowsStack.addArrangedSubview(container)
         } else {
-            for (i, t) in tasks.enumerated() {
-                taskRowsStack.addArrangedSubview(makeRow(i, t))
+            for (i, t) in pageTasks.enumerated() {
+                taskRowsStack.addArrangedSubview(makeRow(pageOffset + i, t))
             }
         }
     }
@@ -790,6 +796,7 @@ final class LocalChatView: NSView {
                     lines.append("")
                 }
                 self.currentTasks = tasks
+                self.currentTaskPage = 0
                 self.buildTaskRows(tasks: tasks)
                 self.taskFilterPicker.removeAllItems()
                 self.taskFilterPicker.addItem(withTitle: "All")
@@ -935,6 +942,49 @@ final class LocalChatView: NSView {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.fetchTasks() }
     }
 
+    private func updateTaskPageControls(totalPages: Int) {
+        for v in taskPageBar.arrangedSubviews { taskPageBar.removeArrangedSubview(v); v.removeFromSuperview() }
+        taskPageBar.orientation = .horizontal
+        taskPageBar.spacing = 2
+        taskPageBar.alignment = .centerY
+        let total = max(1, totalPages)
+        currentTaskPage = min(max(0, currentTaskPage), total - 1)
+        let page = currentTaskPage + 1
+        let showPrev = page > 1
+        let showNext = page < total
+        let makeBtn: (String, Selector, Bool) -> NSButton = { title, action, enabled in
+            let b = NSButton(title: title, target: self, action: action)
+            b.bezelStyle = .recessed
+            b.controlSize = .mini
+            b.isEnabled = enabled
+            b.attributedTitle = NSAttributedString(string: title, attributes: [.foregroundColor: enabled ? NSColor.white : NSColor.gray, .font: NSFont.systemFont(ofSize: 10)])
+            return b
+        }
+        if showPrev {
+            taskPageBar.addArrangedSubview(makeBtn("<", #selector(taskPagePrev(_:)), true))
+        }
+        let label = NSTextField(labelWithString: "\(page)")
+        label.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
+        label.textColor = .white
+        taskPageBar.addArrangedSubview(label)
+        if showNext {
+            taskPageBar.addArrangedSubview(makeBtn(">", #selector(taskPageNext(_:)), true))
+        }
+    }
+
+    @objc private func taskPagePrev(_ sender: Any?) {
+        guard currentTaskPage > 0 else { return }
+        currentTaskPage -= 1
+        buildTaskRows(tasks: currentTasks)
+    }
+
+    @objc private func taskPageNext(_ sender: Any?) {
+        let total = max(1, Int(ceil(Double(currentTasks.count) / Double(tasksPerPage))))
+        guard currentTaskPage < total - 1 else { return }
+        currentTaskPage += 1
+        buildTaskRows(tasks: currentTasks)
+    }
+
     private func setupTaskButtons() {
         for v in taskButtonBar.arrangedSubviews { taskButtonBar.removeArrangedSubview(v); v.removeFromSuperview() }
         for v in taskBottomBar.arrangedSubviews { taskBottomBar.removeArrangedSubview(v); v.removeFromSuperview() }
@@ -964,9 +1014,11 @@ final class LocalChatView: NSView {
         let buttons = defs.map { makeBtn($0.0, $0.1, $0.2) }
         taskButtons = buttons
 
+        updateTaskPageControls(totalPages: max(1, Int(ceil(Double(currentTasks.count) / Double(tasksPerPage)))))
+
         if panelPosition == "bottom" {
-            // single row with all buttons
-            let h = NSStackView(views: buttons)
+            // single row with all buttons; < page# > beside Restore
+            let h = NSStackView(views: buttons + [taskPageBar])
             h.orientation = .horizontal
             h.spacing = 4
             h.alignment = .centerY
@@ -980,10 +1032,11 @@ final class LocalChatView: NSView {
             h.spacing = 4
             h.alignment = .centerY
             taskButtonBar.addArrangedSubview(h)
-            // bottom: Save + Restore
+            // bottom: Save + Restore + < page# > beside Restore
             for b in buttons.suffix(2) {
                 taskBottomBar.addArrangedSubview(b)
             }
+            taskBottomBar.addArrangedSubview(taskPageBar)
             taskBottomBar.isHidden = false
         }
         lastButtonWidth = self.bounds.width
