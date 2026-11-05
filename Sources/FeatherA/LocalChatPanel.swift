@@ -26,6 +26,7 @@ final class LocalChatView: NSView {
     private let resultsPicker = NSPopUpButton()
     private var currentResultTaskId: String?
     private var currentRuns: [[String: Any]] = []
+    private var logsMode: Bool = false
     private let taskButtonBar = NSStackView()
     private let taskBottomBar = NSStackView()
     private let modelPicker = NSPopUpButton()
@@ -75,9 +76,9 @@ final class LocalChatView: NSView {
         tabControl.translatesAutoresizingMaskIntoConstraints = false
         tabControl.segmentCount = 4
         tabControl.setLabel("Ask", forSegment: 0)
-        tabControl.setLabel("Logs", forSegment: 1)
-        tabControl.setLabel("Tasks", forSegment: 2)
-        tabControl.setLabel("Results", forSegment: 3)
+        tabControl.setLabel("Tasks", forSegment: 1)
+        tabControl.setLabel("Results", forSegment: 2)
+        tabControl.setLabel(">>", forSegment: 3)
         tabControl.selectedSegment = 0
         tabControl.target = self
         tabControl.action = #selector(tabChanged(_:))
@@ -418,12 +419,49 @@ final class LocalChatView: NSView {
     }
 
     @objc func tabChanged(_ sender: NSSegmentedControl) {
-        chatContainer.isHidden = sender.selectedSegment != 0
-        logsContainer.isHidden = sender.selectedSegment != 1
-        tasksContainer.isHidden = sender.selectedSegment != 2
-        resultsContainer.isHidden = sender.selectedSegment != 3
-        if sender.selectedSegment == 2 {
-            fetchTasks()
+        if !logsMode {
+            // normal mode
+            if sender.selectedSegment == 3 {
+                // toggle to logs mode
+                logsMode = true
+                tabControl.segmentCount = 2
+                tabControl.setLabel("<<", forSegment: 0)
+                tabControl.setLabel("Logs", forSegment: 1)
+                tabControl.selectedSegment = 1
+                chatContainer.isHidden = true
+                tasksContainer.isHidden = true
+                resultsContainer.isHidden = true
+                logsContainer.isHidden = false
+                return
+            }
+            chatContainer.isHidden = sender.selectedSegment != 0
+            tasksContainer.isHidden = sender.selectedSegment != 1
+            resultsContainer.isHidden = sender.selectedSegment != 2
+            logsContainer.isHidden = true
+            if sender.selectedSegment == 1 {
+                fetchTasks()
+            }
+        } else {
+            if sender.selectedSegment == 0 {
+                // toggle back
+                logsMode = false
+                tabControl.segmentCount = 4
+                tabControl.setLabel("Ask", forSegment: 0)
+                tabControl.setLabel("Tasks", forSegment: 1)
+                tabControl.setLabel("Results", forSegment: 2)
+                tabControl.setLabel(">>", forSegment: 3)
+                tabControl.selectedSegment = 0
+                chatContainer.isHidden = false
+                tasksContainer.isHidden = true
+                resultsContainer.isHidden = true
+                logsContainer.isHidden = true
+                return
+            }
+            // Logs tab selected
+            chatContainer.isHidden = true
+            tasksContainer.isHidden = true
+            resultsContainer.isHidden = true
+            logsContainer.isHidden = false
         }
     }
 
@@ -571,9 +609,7 @@ final class LocalChatView: NSView {
                     URLSession.shared.dataTask(with: req) { _, _, _ in
                         DispatchQueue.main.async {
                             self.fetchTasks()
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
-                                self.fetchLatestResult(taskId: taskId)
-                            }
+                            self.pollResult(taskId: taskId, attempts: 0)
                         }
                     }.resume()
                 }
@@ -692,6 +728,25 @@ final class LocalChatView: NSView {
         loadResult(runId: runId)
     }
 
+    private func pollResult(taskId: String, attempts: Int) {
+        guard attempts < 60 else { return }
+        guard let url = URL(string: "http://127.0.0.1:8787/api/tasks/\(taskId)/runs") else { return }
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+            guard let data, let runs = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+                  let latest = runs.first else { return }
+            let status = latest["status"] as? String ?? "running"
+            if status == "running" {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    self?.pollResult(taskId: taskId, attempts: attempts + 1)
+                }
+            } else {
+                DispatchQueue.main.async {
+                    self?.fetchLatestResult(taskId: taskId)
+                }
+            }
+        }.resume()
+    }
+
     private func fetchLatestResult(taskId: String) {
         currentResultTaskId = taskId
         guard let url = URL(string: "http://127.0.0.1:8787/api/tasks/\(taskId)/runs") else { return }
@@ -710,7 +765,7 @@ final class LocalChatView: NSView {
                     self.resultsPicker.selectItem(at: 0)
                     self.loadResult(runId: runId)
                 }
-                self.tabControl.selectedSegment = 3
+                self.tabControl.selectedSegment = 2
                 self.tabChanged(self.tabControl)
             }
         }.resume()
