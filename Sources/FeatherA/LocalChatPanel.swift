@@ -22,7 +22,7 @@ final class LocalChatView: NSView {
     private let tasksScrollView = NSScrollView()
     private let tasksTextView = NSTextView()
     private let taskRowsStack = NSStackView()
-    private let tasksContentStack = NSStackView()
+    private let tasksContentStack = FlippedStackView()
     private let resultsContainer = NSView()
     private let resultsScrollView = NSScrollView()
     private let resultsTextView = NSTextView()
@@ -620,7 +620,13 @@ final class LocalChatView: NSView {
                 label.lineBreakMode = .byTruncatingTail
                 label.maximumNumberOfLines = 1
             }
-            label.textColor = NSColor(calibratedRed: 0.2, green: 1.0, blue: 0.2, alpha: 1.0)
+            let rowColor: NSColor
+            switch status {
+            case "running": rowColor = NSColor(calibratedRed: 1.0, green: 1.0, blue: 0.2, alpha: 1.0)
+            case "failed": rowColor = NSColor(calibratedRed: 1.0, green: 0.2, blue: 0.2, alpha: 1.0)
+            default: rowColor = NSColor(calibratedRed: 0.2, green: 1.0, blue: 0.2, alpha: 1.0)
+            }
+            label.textColor = rowColor
             label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             let editBtn = NSButton(title: "Edit", target: self, action: #selector(self.editTaskByIndex(_:)))
             editBtn.bezelStyle = .recessed
@@ -1270,4 +1276,9 @@ extension LocalChatView: NSTextFieldDelegate {
         sendChatNow()
         return true
     }
+}
+
+/// A vertically-flipped NSStackView so its content pins to the top of a scroll view.
+final class FlippedStackView: NSStackView {
+    override var isFlipped: Bool { true }
 }
