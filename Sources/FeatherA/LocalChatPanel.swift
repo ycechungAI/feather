@@ -559,10 +559,19 @@ final class LocalChatView: NSView {
             editBtn.bezelStyle = .recessed
             editBtn.controlSize = .mini
             editBtn.tag = i
+            editBtn.setContentHuggingPriority(.required, for: .horizontal)
+            let runBtn = NSButton(title: "Run", target: self, action: #selector(runTaskByIndex(_:)))
+            runBtn.bezelStyle = .recessed
+            runBtn.controlSize = .mini
+            runBtn.tag = i
+            runBtn.setContentHuggingPriority(.required, for: .horizontal)
+            label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             row.addArrangedSubview(label)
             row.addArrangedSubview(NSView()) // spacer
             row.addArrangedSubview(statusLabel)
             row.addArrangedSubview(editBtn)
+            row.addArrangedSubview(runBtn)
             taskRowsStack.addArrangedSubview(row)
         }
     }
