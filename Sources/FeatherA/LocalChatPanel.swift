@@ -543,39 +543,62 @@ final class LocalChatView: NSView {
 
     private func buildTaskRows(tasks: [[String: Any]]) {
         for v in taskRowsStack.arrangedSubviews { taskRowsStack.removeArrangedSubview(v); v.removeFromSuperview() }
-        for (i, t) in tasks.enumerated() {
+        let twoColumns = (panelPosition == "bottom")
+        let makeRow: (Int, [String: Any]) -> NSStackView = { i, t in
             let name = t["name"] as? String ?? "?"
             let enabled = t["enabled"] as? Bool ?? false
-            let taskId = t["id"] as? String ?? ""
+            let sched = t["schedule"] as? String ?? "?"
+            let status = t["status"] as? String ?? "?"
+            let next = t["next_run"] as? String ?? "?"
             let row = NSStackView()
             row.orientation = .horizontal
             row.spacing = 6
             row.alignment = .centerY
-            let sched = t["schedule"] as? String ?? "?"
-            let status = t["status"] as? String ?? "?"
-            let next = t["next_run"] as? String ?? "?"
             let label = NSTextField(labelWithString: String(format: "%2d  %@ %@   %@ · %@ · %@", i+1, enabled ? "●" : "○", name, sched, status, next))
             label.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
             label.textColor = NSColor(calibratedRed: 0.2, green: 1.0, blue: 0.2, alpha: 1.0)
             label.lineBreakMode = .byTruncatingTail
-            let editBtn = NSButton(title: "Edit", target: self, action: #selector(editTaskByIndex(_:)))
+            label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            let editBtn = NSButton(title: "Edit", target: self, action: #selector(self.editTaskByIndex(_:)))
             editBtn.bezelStyle = .recessed
             editBtn.controlSize = .mini
             editBtn.tag = i
             editBtn.setContentHuggingPriority(.required, for: .horizontal)
-            let runBtn = NSButton(title: "Run", target: self, action: #selector(runTaskByIndex(_:)))
+            let runBtn = NSButton(title: "Run", target: self, action: #selector(self.runTaskByIndex(_:)))
             runBtn.bezelStyle = .recessed
             runBtn.controlSize = .mini
             runBtn.tag = i
             runBtn.setContentHuggingPriority(.required, for: .horizontal)
-            label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             let spacer = NSView()
             spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
             row.addArrangedSubview(label)
             row.addArrangedSubview(spacer)
             row.addArrangedSubview(editBtn)
             row.addArrangedSubview(runBtn)
-            taskRowsStack.addArrangedSubview(row)
+            return row
+        }
+        if twoColumns {
+            let leftStack = NSStackView()
+            let rightStack = NSStackView()
+            leftStack.orientation = .vertical
+            leftStack.spacing = 2
+            leftStack.alignment = .leading
+            rightStack.orientation = .vertical
+            rightStack.spacing = 2
+            rightStack.alignment = .leading
+            for (i, t) in tasks.enumerated() {
+                let row = makeRow(i, t)
+                if i % 2 == 0 { leftStack.addArrangedSubview(row) } else { rightStack.addArrangedSubview(row) }
+            }
+            let cols = NSStackView(views: [leftStack, rightStack])
+            cols.orientation = .horizontal
+            cols.spacing = 8
+            cols.alignment = .top
+            taskRowsStack.addArrangedSubview(cols)
+        } else {
+            for (i, t) in tasks.enumerated() {
+                taskRowsStack.addArrangedSubview(makeRow(i, t))
+            }
         }
     }
 
