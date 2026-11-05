@@ -61,6 +61,7 @@ enum Settings {
             "askPanelPosition": "right",
             "saveChatHistory": true,
             "askPanelWidth": 380,
+            "askPanelHeight": 340,
             "askPanelOpenByDefault": true,
         ])
     }
@@ -149,6 +150,12 @@ enum Settings {
     static var askPanelWidth: Double {
         get { d.object(forKey: "askPanelWidth") == nil ? 380 : d.double(forKey: "askPanelWidth") }
         set { d.set(newValue, forKey: "askPanelWidth") }
+    }
+
+    /// Last height of the Ask AI panel (for bottom docking).
+    static var askPanelHeight: Double {
+        get { d.object(forKey: "askPanelHeight") == nil ? 340 : d.double(forKey: "askPanelHeight") }
+        set { d.set(newValue, forKey: "askPanelHeight") }
     }
 
     /// Whether the Ask AI side panel opens automatically when a tab/window opens.

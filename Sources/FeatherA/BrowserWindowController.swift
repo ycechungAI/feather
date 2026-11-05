@@ -1525,6 +1525,8 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
             self?.askPanelSizeConstraint?.constant = newSize
             if pos == "left" || pos == "right" {
                 Settings.askPanelWidth = Double(newSize)
+            } else if pos == "bottom" {
+                Settings.askPanelHeight = Double(newSize)
             }
         }
         NSLayoutConstraint.deactivate(webAreaConstraints + askPanelConstraints)
@@ -1561,7 +1563,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
                 askPanel.leadingAnchor.constraint(equalTo: content.leadingAnchor),
                 askPanel.trailingAnchor.constraint(equalTo: content.trailingAnchor),
                 askPanel.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -8),
-                { let c = askPanel.heightAnchor.constraint(equalToConstant: 340); self.askPanelSizeConstraint = c; return c }(),
+                { let c = askPanel.heightAnchor.constraint(equalToConstant: CGFloat(Settings.askPanelHeight)); self.askPanelSizeConstraint = c; return c }(),
                 webArea.bottomAnchor.constraint(equalTo: askPanel.topAnchor, constant: -8),
             ]
         default:
