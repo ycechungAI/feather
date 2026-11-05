@@ -6,13 +6,15 @@ struct LocalModelConfigTests {
     @Test func defaultsAreLocalOllamaAndASmallModel() {
         let config = ServicesConfig()
         #expect(config.ollama == "http://127.0.0.1:11434")
-        #expect(config.model == "gemma3:1b")
+        #expect(config.routerModel == "tev1:0.8b")
+        #expect(config.answerModel == "granite4:3b")
+        #expect(config.basicModel == "gemma3:1b")
         #expect(config.pageCharacterLimit == 12_000)
     }
 
     @Test func partialFileKeepsTheOtherDefaults() throws {
-        let config = try JSONDecoder().decode(ServicesConfig.self, from: Data(#"{"model":"llama3.2:1b"}"#.utf8))
-        #expect(config.model == "llama3.2:1b")
+        let config = try JSONDecoder().decode(ServicesConfig.self, from: Data(#"{"basicModel":"llama3.2:1b"}"#.utf8))
+        #expect(config.basicModel == "llama3.2:1b")
         #expect(config.ollama == "http://127.0.0.1:11434")
     }
 
@@ -29,7 +31,7 @@ struct LocalModelRequestTests {
         #expect(request.httpMethod == "POST")
         let data = try #require(request.httpBody)
         let body = try #require(try? JSONSerialization.jsonObject(with: data) as? [String: Any])
-        #expect(body["model"] as? String == "gemma3:1b")
+        #expect(body["model"] as? String == "granite4:3b")
         #expect(body["stream"] as? Bool == false)
         let messages = try #require(body["messages"] as? [[String: String]])
         #expect(messages[1]["content"]?.contains("Hello page") == true)
@@ -72,7 +74,7 @@ struct LocalModelRequestTests {
     }
 
     @Test func pullAsksOllamaForTheConfiguredModelWithoutStreaming() throws {
-        let request = try LocalModel(config: ServicesConfig()).pullRequest()
+        let request = try LocalModel(config: ServicesConfig()).pullRequest("gemma3:1b")
         #expect(request.url?.absoluteString == "http://127.0.0.1:11434/api/pull")
         #expect(request.timeoutInterval == 1800)
         let data = try #require(request.httpBody)

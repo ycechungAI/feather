@@ -17,16 +17,17 @@ enum LocalModelPrompt {
             showNotRunning(window: window)
             return
         }
-        guard await model.modelInstalled() else {
-            offerDownload(model: model, pageText: pageText, window: window)
+        let answerModel = model.config.answerModel
+        guard await model.modelInstalled(answerModel) else {
+            offerDownload(name: answerModel, model: model, pageText: pageText, window: window)
             return
         }
         askQuestion(pageText: pageText, window: window)
     }
 
-    private static func offerDownload(model: LocalModel, pageText: String, window: NSWindow) {
+    private static func offerDownload(name: String, model: LocalModel, pageText: String, window: NSWindow) {
         let alert = NSAlert()
-        alert.messageText = "Download \(model.config.model)?"
+        alert.messageText = "Download \(name)?"
         alert.informativeText = "Feather needs this small model to answer. Ollama downloads it from its library and it then runs on this Mac."
         alert.addButton(withTitle: "Download")
         alert.addButton(withTitle: "Cancel")
@@ -34,7 +35,7 @@ enum LocalModelPrompt {
             guard response == .alertFirstButtonReturn else { return }
             Task { @MainActor in
                 do {
-                    try await model.pull()
+                    try await model.pull(name)
                     askQuestion(pageText: pageText, window: window)
                 } catch {
                     show((error as? LocalizedError)?.errorDescription ?? error.localizedDescription,

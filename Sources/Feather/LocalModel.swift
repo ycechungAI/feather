@@ -4,12 +4,20 @@ import Foundation
 /// without it, or with a broken one, the defaults are used.
 struct ServicesConfig: Codable, Equatable {
     var ollama: String
-    var model: String
+    var routerModel: String
+    var answerModel: String
+    var basicModel: String
     var pageCharacterLimit: Int
 
-    init(ollama: String = "http://127.0.0.1:11434", model: String = "gemma3:1b", pageCharacterLimit: Int = 12_000) {
+    init(ollama: String = "http://127.0.0.1:11434",
+         routerModel: String = "tev1:0.8b",
+         answerModel: String = "granite4:3b",
+         basicModel: String = "gemma3:1b",
+         pageCharacterLimit: Int = 12_000) {
         self.ollama = ollama
-        self.model = model
+        self.routerModel = routerModel
+        self.answerModel = answerModel
+        self.basicModel = basicModel
         self.pageCharacterLimit = pageCharacterLimit
     }
 
@@ -17,7 +25,9 @@ struct ServicesConfig: Codable, Equatable {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         let defaults = ServicesConfig()
         ollama = try values.decodeIfPresent(String.self, forKey: .ollama) ?? defaults.ollama
-        model = try values.decodeIfPresent(String.self, forKey: .model) ?? defaults.model
+        routerModel = try values.decodeIfPresent(String.self, forKey: .routerModel) ?? defaults.routerModel
+        answerModel = try values.decodeIfPresent(String.self, forKey: .answerModel) ?? defaults.answerModel
+        basicModel = try values.decodeIfPresent(String.self, forKey: .basicModel) ?? defaults.basicModel
         pageCharacterLimit = try values.decodeIfPresent(Int.self, forKey: .pageCharacterLimit) ?? defaults.pageCharacterLimit
     }
 
@@ -70,7 +80,7 @@ struct LocalModel {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let page = Self.clip(pageText, limit: config.pageCharacterLimit)
         let body: [String: Any] = [
-            "model": config.model,
+            "model": config.answerModel,
             "stream": false,
             "messages": [
                 ["role": "system", "content": Self.instructions],
@@ -107,16 +117,16 @@ struct LocalModel {
         return models.contains { ($0["name"] as? String) == name }
     }
 
-    /// True when the configured model is already on this Mac (asks Ollama's model list).
-    func modelInstalled() async -> Bool {
+    /// True when the named model is already on this Mac (asks Ollama's model list).
+    func modelInstalled(_ name: String) async -> Bool {
         guard let base = URL(string: config.ollama), Self.isLocal(base),
               let result = try? await URLSession.shared.data(from: base.appendingPathComponent("api/tags")) else {
             return false
         }
-        return Self.hasModel(named: config.model, inTags: result.0)
+        return Self.hasModel(named: name, inTags: result.0)
     }
 
-    func pullRequest() throws -> URLRequest {
+    func pullRequest(_ name: String) throws -> URLRequest {
         guard let base = URL(string: config.ollama), Self.isLocal(base) else {
             throw LocalModelError.notLocalhost(config.ollama)
         }
@@ -124,13 +134,13 @@ struct LocalModel {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 1800
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["model": config.model, "stream": false])
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["model": name, "stream": false])
         return request
     }
 
     /// Downloads the configured model through Ollama. Only called after the user agrees.
-    func pull() async throws {
-        let (data, response) = try await URLSession.shared.data(for: try pullRequest())
+    func pull(_ name: String) async throws {
+        let (data, response) = try await URLSession.shared.data(for: try pullRequest(name))
         guard (response as? HTTPURLResponse)?.statusCode == 200 else {
             throw LocalModelError.modelError("the download didn't finish")
         }

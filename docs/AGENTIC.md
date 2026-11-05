@@ -46,8 +46,11 @@ Feather's new code is the browser side: the panel, the page text, and the forms.
 
 ## Models and routing (decided)
 
-- **Answers:** `granite4:3b` (page Q&A, summaries).
-- **Routing:** `tev1:0.8b`, a fast decision model. It doesn't accept chat or generate calls. Noskill calls it through
+- **Three models, three jobs** (`services.json` keys in brackets):
+  - **Router** `tev1:0.8b` [routerModel]: fast decisions, which tool or service handles a request.
+  - **Answers** `granite4:3b` [answerModel]: page Q&A and summaries.
+  - **Basic** `gemma3:1b` [basicModel]: search and simple agentic tasks.
+- The router is `tev1:0.8b`, a fast decision model. It doesn't accept chat or generate calls. Noskill calls it through
   Ollama's `POST /v1/systemone` with JSON `{"model", "state", "questions", "keep_alive": -1}` (see noskill
   `internal/decide/jev.go`). Feather's router must use that same call, not a chat request.
 - **Install choice (user decides):** Feather offers two ways to get Ollama:
