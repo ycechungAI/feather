@@ -23,9 +23,11 @@ final class LocalChatView: NSView {
     private let resultsContainer = NSView()
     private let resultsScrollView = NSScrollView()
     private let resultsTextView = NSTextView()
-    private let resultsPicker = NSPopUpButton()
+    private let taskPicker = NSPopUpButton()
+    private let runPicker = NSPopUpButton()
     private var currentResultTaskId: String?
     private var currentRuns: [[String: Any]] = []
+    private var currentTasksForResults: [[String: Any]] = []
     private var logsMode: Bool = false
     private let taskButtonBar = NSStackView()
     private let taskBottomBar = NSStackView()
@@ -255,17 +257,25 @@ final class LocalChatView: NSView {
         if let container = resultsTextView.textContainer {
             container.widthTracksTextView = true
         }
-        resultsPicker.translatesAutoresizingMaskIntoConstraints = false
-        resultsPicker.target = self
-        resultsPicker.action = #selector(resultPicked(_:))
-        resultsContainer.addSubview(resultsPicker)
+        taskPicker.translatesAutoresizingMaskIntoConstraints = false
+        taskPicker.target = self
+        taskPicker.action = #selector(taskPicked(_:))
+        runPicker.translatesAutoresizingMaskIntoConstraints = false
+        runPicker.target = self
+        runPicker.action = #selector(runPicked(_:))
+        resultsContainer.addSubview(taskPicker)
+        resultsContainer.addSubview(runPicker)
         resultsContainer.addSubview(resultsScrollView)
         NSLayoutConstraint.activate([
-            resultsPicker.topAnchor.constraint(equalTo: resultsContainer.topAnchor, constant: 4),
-            resultsPicker.leadingAnchor.constraint(equalTo: resultsContainer.leadingAnchor, constant: 8),
-            resultsPicker.trailingAnchor.constraint(equalTo: resultsContainer.trailingAnchor, constant: -8),
-            resultsPicker.heightAnchor.constraint(equalToConstant: 24),
-            resultsScrollView.topAnchor.constraint(equalTo: resultsPicker.bottomAnchor, constant: 4),
+            taskPicker.topAnchor.constraint(equalTo: resultsContainer.topAnchor, constant: 4),
+            taskPicker.leadingAnchor.constraint(equalTo: resultsContainer.leadingAnchor, constant: 8),
+            taskPicker.widthAnchor.constraint(equalTo: resultsContainer.widthAnchor, multiplier: 0.4, constant: -12),
+            taskPicker.heightAnchor.constraint(equalToConstant: 24),
+            runPicker.topAnchor.constraint(equalTo: resultsContainer.topAnchor, constant: 4),
+            runPicker.leadingAnchor.constraint(equalTo: taskPicker.trailingAnchor, constant: 8),
+            runPicker.trailingAnchor.constraint(equalTo: resultsContainer.trailingAnchor, constant: -8),
+            runPicker.heightAnchor.constraint(equalToConstant: 24),
+            resultsScrollView.topAnchor.constraint(equalTo: taskPicker.bottomAnchor, constant: 4),
             resultsScrollView.leadingAnchor.constraint(equalTo: resultsContainer.leadingAnchor),
             resultsScrollView.trailingAnchor.constraint(equalTo: resultsContainer.trailingAnchor),
             resultsScrollView.bottomAnchor.constraint(equalTo: resultsContainer.bottomAnchor),
@@ -721,11 +731,41 @@ final class LocalChatView: NSView {
         }
     }
 
-    @objc private func resultPicked(_ sender: NSPopUpButton) {
+    @objc private func taskPicked(_ sender: NSPopUpButton) {
+        let idx = sender.indexOfSelectedItem
+        guard idx >= 0, idx < currentTasksForResults.count else { return }
+        let task = currentTasksForResults[idx]
+        guard let taskId = task["id"] as? String else { return }
+        currentResultTaskId = taskId
+        loadRunsForTask(taskId: taskId)
+    }
+
+    @objc private func runPicked(_ sender: NSPopUpButton) {
         let idx = sender.indexOfSelectedItem
         guard idx >= 0, idx < currentRuns.count else { return }
         guard let runId = currentRuns[idx]["id"] as? Int else { return }
         loadResult(runId: runId)
+    }
+
+    private func loadRunsForTask(taskId: String) {
+        guard let url = URL(string: "http://127.0.0.1:8787/api/tasks/\(taskId)/runs") else { return }
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+            guard let data, let runs = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.currentRuns = runs
+                self.runPicker.removeAllItems()
+                for r in runs {
+                    let started = r["started_at"] as? String ?? "?"
+                    let status = r["status"] as? String ?? "?"
+                    self.runPicker.addItem(withTitle: "\(started) [\(status)]")
+                }
+                if let latest = runs.first, let runId = latest["id"] as? Int {
+                    self.runPicker.selectItem(at: 0)
+                    self.loadResult(runId: runId)
+                }
+            }
+        }.resume()
     }
 
     private func pollResult(taskId: String, attempts: Int) {
@@ -749,24 +789,23 @@ final class LocalChatView: NSView {
 
     private func fetchLatestResult(taskId: String) {
         currentResultTaskId = taskId
-        guard let url = URL(string: "http://127.0.0.1:8787/api/tasks/\(taskId)/runs") else { return }
-        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
-            guard let data, let runs = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return }
+        // fetch task list for taskPicker
+        guard let tasksURL = URL(string: "http://127.0.0.1:8787/api/tasks") else { return }
+        URLSession.shared.dataTask(with: tasksURL) { [weak self] data, _, _ in
+            guard let data, let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let tasks = obj["tasks"] as? [[String: Any]] else { return }
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.currentRuns = runs
-                self.resultsPicker.removeAllItems()
-                for r in runs {
-                    let started = r["started_at"] as? String ?? "?"
-                    let status = r["status"] as? String ?? "?"
-                    self.resultsPicker.addItem(withTitle: "\(started) [\(status)]")
+                self.currentTasksForResults = tasks
+                self.taskPicker.removeAllItems()
+                for (i, t) in tasks.enumerated() {
+                    let name = t["name"] as? String ?? "?"
+                    self.taskPicker.addItem(withTitle: "\(i+1). \(name)")
                 }
-                if let latest = runs.first, let runId = latest["id"] as? Int {
-                    self.resultsPicker.selectItem(at: 0)
-                    self.loadResult(runId: runId)
+                if let idx = tasks.firstIndex(where: { ($0["id"] as? String) == taskId }) {
+                    self.taskPicker.selectItem(at: idx)
                 }
-                self.tabControl.selectedSegment = 2
-                self.tabChanged(self.tabControl)
+                self.loadRunsForTask(taskId: taskId)
             }
         }.resume()
     }
