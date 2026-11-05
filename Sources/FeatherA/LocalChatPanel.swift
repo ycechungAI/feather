@@ -235,6 +235,7 @@ final class LocalChatView: NSView {
 
             nameLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 6),
             nameLabel.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: tabControl.leadingAnchor, constant: -16),
 
             tabControl.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -8),
             tabControl.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
