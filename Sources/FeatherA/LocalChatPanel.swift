@@ -20,9 +20,7 @@ final class LocalChatView: NSView {
         super.init(frame: frameRect)
         translatesAutoresizingMaskIntoConstraints = false
         wantsLayer = true
-        layer?.backgroundColor = NSColor.systemYellow.cgColor
-        layer?.borderColor = NSColor.systemRed.cgColor
-        layer?.borderWidth = 3
+        layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
 
         chatScrollView.translatesAutoresizingMaskIntoConstraints = false
         chatScrollView.hasVerticalScroller = true
@@ -50,6 +48,8 @@ final class LocalChatView: NSView {
         inputField.translatesAutoresizingMaskIntoConstraints = false
         inputField.placeholderString = "Ask about this page"
         inputField.heightAnchor.constraint(equalToConstant: 30).isActive = true
+        inputField.target = self
+        inputField.action = #selector(sendChatNow)
 
         sendButton.translatesAutoresizingMaskIntoConstraints = false
         sendButton.title = "Send"
