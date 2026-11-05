@@ -922,6 +922,7 @@ final class LocalChatView: NSView {
         for v in taskButtonBar.arrangedSubviews { taskButtonBar.removeArrangedSubview(v); v.removeFromSuperview() }
         for v in taskBottomBar.arrangedSubviews { taskBottomBar.removeArrangedSubview(v); v.removeFromSuperview() }
         taskButtons.removeAll()
+        taskBottomBar.addArrangedSubview(taskFilterPicker)
         let makeBtn = { (title: String?, symbol: String?, action: Selector) -> NSButton in
             let b: NSButton
             if let symbol = symbol {
@@ -951,8 +952,7 @@ final class LocalChatView: NSView {
             h.spacing = 4
             h.alignment = .centerY
             taskButtonBar.addArrangedSubview(h)
-            // hide bottom bar
-            taskBottomBar.isHidden = true
+            taskBottomBar.isHidden = false
         } else {
             // top: action buttons (single row, compact)
             let topBtns = Array(buttons.prefix(5))
