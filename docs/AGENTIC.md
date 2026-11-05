@@ -18,6 +18,21 @@ the user is looking at.
 
 Second step, after the first works: call noskill's local API (`127.0.0.1:11435`) to run a skill on the page.
 
+## Integration: call the existing local services (ADR-0017 pattern)
+
+Feather doesn't copy noskill's, sched's or orcastrator's code. It calls the services that already run on this Mac over
+`localhost` HTTP, the same way the noskill app does (noskill's ADR-0017). Each service keeps its own data and tests.
+
+| Service | Port | Used for | Endpoints (checked in the noskill repo) |
+|---|---|---|---|
+| Ollama | 11434 | page Q&A with a 1B model | `POST /api/chat`, `GET /api/tags` |
+| noskill agent | 11435 | skills, jobs, status, events | `POST /v1/chat/completions`, `POST /noskill/v1/jobs`, `POST /noskill/v1/jobs/draft`, `GET /noskill/v1/status`, `GET /noskill/v1/events` |
+| sched (tasks) | 8787 | scheduled tasks | `GET/POST /api/tasks`, `POST /api/tasks/draft`, `POST /api/tasks/{id}/run`, `GET /api/runs/{id}/report` |
+| orcastrator (research) | 8400 | search and research reports | routes not yet checked; check before use |
+
+Rules: only `localhost`; if a service isn't running, Feather shows a clear message and starts nothing itself.
+Feather's new code is the browser side: the panel, the page text, and the forms. The services do the work.
+
 ## Features
 
 Must have:
