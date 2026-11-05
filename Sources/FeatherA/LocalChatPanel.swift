@@ -417,6 +417,7 @@ final class LocalChatView: NSView {
         handleConstraints.removeAll()
         switch panelPosition {
         case "left":
+            resizeHandle.isHidden = false
             handleConstraints = [
                 resizeHandle.topAnchor.constraint(equalTo: topAnchor),
                 resizeHandle.trailingAnchor.constraint(equalTo: trailingAnchor),
@@ -424,13 +425,10 @@ final class LocalChatView: NSView {
                 resizeHandle.widthAnchor.constraint(equalToConstant: 6),
             ]
         case "bottom":
-            handleConstraints = [
-                resizeHandle.topAnchor.constraint(equalTo: topAnchor),
-                resizeHandle.leadingAnchor.constraint(equalTo: leadingAnchor),
-                resizeHandle.trailingAnchor.constraint(equalTo: trailingAnchor),
-                resizeHandle.heightAnchor.constraint(equalToConstant: 6),
-            ]
+            resizeHandle.isHidden = true
+            handleConstraints = []
         default:
+            resizeHandle.isHidden = false
             handleConstraints = [
                 resizeHandle.topAnchor.constraint(equalTo: topAnchor),
                 resizeHandle.leadingAnchor.constraint(equalTo: leadingAnchor),
