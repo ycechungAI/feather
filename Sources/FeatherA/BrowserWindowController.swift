@@ -483,6 +483,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         }
         config.preferences.javaScriptCanOpenWindowsAutomatically = false
         config.preferences.isElementFullscreenEnabled = true
+        config.mediaTypesRequiringUserActionForPlayback = []
         // WebKit keeps Picture in Picture off for apps unless this (non-public) preference is set.
         // It must be set through KVC: `perform(_:with: NSNumber)` passes a pointer to the BOOL
         // parameter and leaves PiP off. Guarded so a future WebKit without it skips the call.
@@ -1521,6 +1522,14 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         let pos = Settings.askPanelPosition
         askPanel.panelPosition = pos
         askPanel.configure(pageText: pageText, position: pos)
+        askPanel.fetchPageText = { [weak self] in
+            guard let self, let wv = self.webView else { return "" }
+            return await withCheckedContinuation { cont in
+                wv.evaluateJavaScript("document.body ? document.body.innerText : ''") { r, _ in
+                    cont.resume(returning: (r as? String) ?? "")
+                }
+            }
+        }
         askPanel.onResize = { [weak self] newSize in
             self?.askPanelSizeConstraint?.constant = newSize
             if pos == "left" || pos == "right" {

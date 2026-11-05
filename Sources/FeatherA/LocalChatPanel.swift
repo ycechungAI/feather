@@ -561,6 +561,8 @@ final class LocalChatView: NSView {
 
     var onHide: (() -> Void)?
     var onResize: ((CGFloat) -> Void)?
+    /// Always grab fresh page contents as known context before each Ask.
+    var fetchPageText: (() async -> String)?
 
     private func render() {
         let turquoise = NSColor(calibratedRed: 0.1, green: 0.8, blue: 0.8, alpha: 1.0)
@@ -1230,6 +1232,13 @@ final class LocalChatView: NSView {
 
     private func answer(question: String) async {
         appendLog("Question: \(question)")
+        if let fetchPageText {
+            let fresh = await fetchPageText()
+            if !fresh.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                pageText = fresh
+                appendLog("Page context refreshed: \(fresh.count) chars")
+            }
+        }
         let config = ServicesConfig()
         let router = Router(config: config)
         let result = try? await router.route(question, pageOpen: !pageText.isEmpty)
