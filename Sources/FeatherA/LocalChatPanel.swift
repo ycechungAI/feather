@@ -37,7 +37,6 @@ final class LocalChatView: NSView {
     private var logsMode: Bool = false
     private let taskButtonBar = NSStackView()
     private let taskBottomBar = NSStackView()
-    private let taskFilterPicker = NSPopUpButton()
     private let taskPageBar = NSStackView()
     private var currentTaskPage: Int = 0
     private let tasksPerPage: Int = 5
@@ -248,12 +247,10 @@ final class LocalChatView: NSView {
         tasksContainer.addSubview(tasksScrollView)
         tasksContainer.addSubview(taskButtonBar)
         tasksContainer.addSubview(taskBottomBar)
-        taskBottomBar.addArrangedSubview(taskFilterPicker)
         taskPageBar.orientation = .horizontal
         taskPageBar.spacing = 2
         taskPageBar.alignment = .centerY
         taskBottomBar.addArrangedSubview(taskPageBar)
-        taskFilterPicker.widthAnchor.constraint(lessThanOrEqualToConstant: 120).isActive = true
         taskButtonBar.translatesAutoresizingMaskIntoConstraints = false
         taskButtonBar.orientation = .vertical
         taskButtonBar.spacing = 4
@@ -270,12 +267,6 @@ final class LocalChatView: NSView {
         taskBottomBar.orientation = .horizontal
         taskBottomBar.spacing = 6
         taskBottomBar.alignment = .centerY
-        taskFilterPicker.translatesAutoresizingMaskIntoConstraints = false
-        taskFilterPicker.target = self
-        taskFilterPicker.action = #selector(taskFilterChanged(_:))
-        taskFilterPicker.font = .systemFont(ofSize: 10)
-        taskFilterPicker.appearance = NSAppearance(named: .darkAqua)
-        taskFilterPicker.menu?.appearance = NSAppearance(named: .darkAqua)
         // buttons created in setupTaskButtons() called from configure
         NSLayoutConstraint.activate([
             taskButtonBar.topAnchor.constraint(equalTo: tasksContainer.topAnchor, constant: 2),
@@ -798,13 +789,6 @@ final class LocalChatView: NSView {
                 self.currentTasks = tasks
                 self.currentTaskPage = 0
                 self.buildTaskRows(tasks: tasks)
-                self.taskFilterPicker.removeAllItems()
-                self.taskFilterPicker.addItem(withTitle: "All")
-                self.taskFilterPicker.menu?.appearance = NSAppearance(named: .darkAqua)
-                for t in tasks {
-                    self.taskFilterPicker.addItem(withTitle: t["name"] as? String ?? "?")
-                }
-                self.taskFilterPicker.selectItem(at: 0)
                 self.tasksTextView.string = lines.joined(separator: "\n")
             }
         }.resume()
@@ -989,7 +973,6 @@ final class LocalChatView: NSView {
         for v in taskButtonBar.arrangedSubviews { taskButtonBar.removeArrangedSubview(v); v.removeFromSuperview() }
         for v in taskBottomBar.arrangedSubviews { taskBottomBar.removeArrangedSubview(v); v.removeFromSuperview() }
         taskButtons.removeAll()
-        taskBottomBar.addArrangedSubview(taskFilterPicker)
         let makeBtn = { (title: String?, symbol: String?, action: Selector) -> NSButton in
             let b: NSButton
             if let symbol = symbol {
@@ -1182,28 +1165,6 @@ final class LocalChatView: NSView {
                 self.logsTextView.string += "\n=== Task Result ===\n" + full + "\n"
             }
         }.resume()
-    }
-
-    @objc private func taskFilterChanged(_ sender: NSPopUpButton) {
-        let idx = sender.indexOfSelectedItem
-        if idx <= 0 {
-            fetchTasks()
-            return
-        }
-        let task = currentTasks[idx - 1]
-        guard let taskId = task["id"] as? String else { return }
-        var lines: [String] = []
-        lines.append("Task: \(task["name"] as? String ?? "?")")
-        lines.append("ID: \(taskId)")
-        lines.append("Schedule: \(task["schedule"] as? String ?? "?")")
-        lines.append("Enabled: \(task["enabled"] as? Bool ?? false)")
-        lines.append("Status: \(task["status"] as? String ?? "?")")
-        lines.append("Next run: \(task["next_run"] as? String ?? "?")")
-        lines.append("Model: \(task["model"] as? String ?? "?")")
-        tasksTextView.string = lines.joined(separator: "\n")
-        let clip = tasksScrollView.contentView
-        clip.scroll(to: NSPoint(x: 0, y: 0))
-        tasksScrollView.reflectScrolledClipView(clip)
     }
 
     @objc private func verifyTaskText(_ sender: Any?) {
