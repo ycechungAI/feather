@@ -19,6 +19,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
     private var findBarHeight: NSLayoutConstraint!
     private var webAreaConstraints: [NSLayoutConstraint] = []
     private var askPanelConstraints: [NSLayoutConstraint] = []
+    private var askPanelSizeConstraint: NSLayoutConstraint?
     private let suggestions = SuggestionsPopup()
     private let addressField = NSTextField()
     private var backButton: NSButton!
@@ -1512,10 +1513,14 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
     }
 
     func showAskPanel(pageText: String) {
-        askPanel.configure(pageText: pageText)
+        let pos = Settings.askPanelPosition
+        askPanel.panelPosition = pos
+        askPanel.configure(pageText: pageText, position: pos)
+        askPanel.onResize = { [weak self] newSize in
+            self?.askPanelSizeConstraint?.constant = newSize
+        }
         NSLayoutConstraint.deactivate(webAreaConstraints + askPanelConstraints)
         askPanelConstraints.removeAll()
-        let pos = Settings.askPanelPosition
         switch pos {
         case "left":
             webAreaConstraints = [
@@ -1531,7 +1536,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
                 askPanel.topAnchor.constraint(equalTo: findBar.bottomAnchor),
                 askPanel.leadingAnchor.constraint(equalTo: content.leadingAnchor),
                 askPanel.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-                askPanel.widthAnchor.constraint(equalToConstant: 320),
+                { let c = askPanel.widthAnchor.constraint(equalToConstant: 320); self.askPanelSizeConstraint = c; return c }(),
                 webArea.leadingAnchor.constraint(equalTo: askPanel.trailingAnchor),
             ]
         case "bottom":
@@ -1548,7 +1553,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
                 askPanel.leadingAnchor.constraint(equalTo: content.leadingAnchor),
                 askPanel.trailingAnchor.constraint(equalTo: content.trailingAnchor),
                 askPanel.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-                askPanel.heightAnchor.constraint(equalToConstant: 260),
+                { let c = askPanel.heightAnchor.constraint(equalToConstant: 260); self.askPanelSizeConstraint = c; return c }(),
                 webArea.bottomAnchor.constraint(equalTo: askPanel.topAnchor),
             ]
         default:
@@ -1565,7 +1570,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
                 askPanel.topAnchor.constraint(equalTo: findBar.bottomAnchor),
                 askPanel.trailingAnchor.constraint(equalTo: content.trailingAnchor),
                 askPanel.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-                askPanel.widthAnchor.constraint(equalToConstant: 320),
+                { let c = askPanel.widthAnchor.constraint(equalToConstant: 320); self.askPanelSizeConstraint = c; return c }(),
                 webArea.trailingAnchor.constraint(equalTo: askPanel.leadingAnchor),
             ]
         }

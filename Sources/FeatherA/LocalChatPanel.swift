@@ -16,6 +16,7 @@ final class LocalChatView: NSView {
 
     // Chat
     private let chatContainer = NSView()
+    private let logsContainer = NSView()
     private let chatScrollView = NSScrollView()
     private let chatTextView = NSTextView()
     private let inputRow = NSView()
@@ -24,8 +25,12 @@ final class LocalChatView: NSView {
     private let sendButton = NSButton()
     private let closeButton = NSButton()
 
-    // Logs
-    private let logsContainer = NSView()
+    // Resize handle
+    private let resizeHandle = NSView()
+    private var panStartSize: CGFloat = 0
+    private var panStartLocation: CGFloat = 0
+    var panelPosition: String = "right"
+    private var handleConstraints: [NSLayoutConstraint] = []
     private let logsScrollView = NSScrollView()
     private let logsTextView = NSTextView()
 
@@ -190,17 +195,56 @@ final class LocalChatView: NSView {
             logsContainer.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
 
+        // Resize handle
+        resizeHandle.translatesAutoresizingMaskIntoConstraints = false
+        resizeHandle.wantsLayer = true
+        resizeHandle.layer?.backgroundColor = NSColor(white: 0.3, alpha: 1).cgColor
+        addSubview(resizeHandle)
+        let pan = NSPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+        resizeHandle.addGestureRecognizer(pan)
+
         inputField.delegate = self
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func configure(pageText: String) {
+    func configure(pageText: String, position: String = "right") {
         self.pageText = pageText
+        self.panelPosition = position
         history = Settings.saveChatHistory ? Self.loadHistory() : []
         inputField.stringValue = ""
         render()
         appendLog("Panel opened. Page text: \(pageText.count) chars.")
+        setupHandle()
+    }
+
+    private func setupHandle() {
+        NSLayoutConstraint.deactivate(handleConstraints)
+        handleConstraints.removeAll()
+        switch panelPosition {
+        case "left":
+            handleConstraints = [
+                resizeHandle.topAnchor.constraint(equalTo: topAnchor),
+                resizeHandle.trailingAnchor.constraint(equalTo: trailingAnchor),
+                resizeHandle.bottomAnchor.constraint(equalTo: bottomAnchor),
+                resizeHandle.widthAnchor.constraint(equalToConstant: 6),
+            ]
+        case "bottom":
+            handleConstraints = [
+                resizeHandle.topAnchor.constraint(equalTo: topAnchor),
+                resizeHandle.leadingAnchor.constraint(equalTo: leadingAnchor),
+                resizeHandle.trailingAnchor.constraint(equalTo: trailingAnchor),
+                resizeHandle.heightAnchor.constraint(equalToConstant: 6),
+            ]
+        default:
+            handleConstraints = [
+                resizeHandle.topAnchor.constraint(equalTo: topAnchor),
+                resizeHandle.leadingAnchor.constraint(equalTo: leadingAnchor),
+                resizeHandle.bottomAnchor.constraint(equalTo: bottomAnchor),
+                resizeHandle.widthAnchor.constraint(equalToConstant: 6),
+            ]
+        }
+        NSLayoutConstraint.activate(handleConstraints)
     }
 
     @objc func sendChatNow() {
@@ -221,6 +265,33 @@ final class LocalChatView: NSView {
         onHide?()
     }
 
+    @objc func handlePan(_ gesture: NSPanGestureRecognizer) {
+        let loc = gesture.location(in: self)
+        switch gesture.state {
+        case .began:
+            if panelPosition == "bottom" {
+                panStartSize = self.frame.height
+                panStartLocation = loc.y
+            } else {
+                panStartSize = self.frame.width
+                panStartLocation = loc.x
+            }
+        case .changed:
+            let delta: CGFloat
+            if panelPosition == "bottom" {
+                delta = panStartLocation - loc.y
+            } else if panelPosition == "left" {
+                delta = loc.x - panStartLocation
+            } else {
+                delta = panStartLocation - loc.x
+            }
+            let newSize = max(200, panStartSize + delta)
+            onResize?(newSize)
+        default:
+            break
+        }
+    }
+
     @objc func tabChanged(_ sender: NSSegmentedControl) {
         let isChat = sender.selectedSegment == 0
         chatContainer.isHidden = !isChat
@@ -228,6 +299,7 @@ final class LocalChatView: NSView {
     }
 
     var onHide: (() -> Void)?
+    var onResize: ((CGFloat) -> Void)?
 
     private func render() {
         let turquoise = NSColor(calibratedRed: 0.1, green: 0.8, blue: 0.8, alpha: 1.0)
