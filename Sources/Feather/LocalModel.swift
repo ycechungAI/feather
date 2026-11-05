@@ -81,6 +81,24 @@ struct LocalModel {
         return request
     }
 
+    func versionRequest() throws -> URLRequest {
+        guard let base = URL(string: config.ollama), Self.isLocal(base) else {
+            throw LocalModelError.notLocalhost(config.ollama)
+        }
+        var request = URLRequest(url: base.appendingPathComponent("api/version"))
+        request.timeoutInterval = 2
+        return request
+    }
+
+    /// True when Ollama answers on this Mac. Only asks; never starts Ollama or downloads anything.
+    func isRunning() async -> Bool {
+        guard let request = try? versionRequest(),
+              let result = try? await URLSession.shared.data(for: request) else {
+            return false
+        }
+        return (result.1 as? HTTPURLResponse)?.statusCode == 200
+    }
+
     func ask(question: String, pageText: String) async throws -> String {
         let request = try chatRequest(question: question, pageText: pageText)
         let data: Data

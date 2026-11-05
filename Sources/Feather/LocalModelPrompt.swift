@@ -7,7 +7,28 @@ enum LocalModelPrompt {
     static func ask(webView: WKWebView, window: NSWindow) {
         webView.evaluateJavaScript("document.body ? document.body.innerText : ''") { result, _ in
             let pageText = result as? String ?? ""
-            Task { @MainActor in askQuestion(pageText: pageText, window: window) }
+            Task { @MainActor in await checkThenAsk(pageText: pageText, window: window) }
+        }
+    }
+
+    private static func checkThenAsk(pageText: String, window: NSWindow) async {
+        guard await LocalModel(config: .load()).isRunning() else {
+            showNotRunning(window: window)
+            return
+        }
+        askQuestion(pageText: pageText, window: window)
+    }
+
+    private static func showNotRunning(window: NSWindow) {
+        let alert = NSAlert()
+        alert.messageText = "Ollama isn't running"
+        alert.informativeText = "Feather answers with Ollama on this Mac. Install Ollama from ollama.com, start it, then try again. Feather doesn't install or start Ollama for you."
+        alert.addButton(withTitle: "Open ollama.com")
+        alert.addButton(withTitle: "Cancel")
+        alert.beginSheetModal(for: window) { response in
+            if response == .alertFirstButtonReturn, let url = URL(string: "https://ollama.com/download") {
+                NSWorkspace.shared.open(url)
+            }
         }
     }
 

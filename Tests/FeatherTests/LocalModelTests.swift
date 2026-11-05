@@ -44,6 +44,26 @@ struct LocalModelRequestTests {
         }
     }
 
+    @Test func versionCheckGoesToTheLocalServerWithAShortTimeout() throws {
+        let request = try LocalModel(config: ServicesConfig()).versionRequest()
+        #expect(request.url?.absoluteString == "http://127.0.0.1:11434/api/version")
+        #expect(request.timeoutInterval == 2)
+    }
+
+    @Test func reportsNotRunningWhenNothingListens() async {
+        var config = ServicesConfig()
+        config.ollama = "http://127.0.0.1:1"
+        #expect(await LocalModel(config: config).isRunning() == false)
+    }
+
+    @Test func versionCheckRefusesRemoteServers() {
+        var config = ServicesConfig()
+        config.ollama = "https://example.com"
+        #expect(throws: LocalModelError.notLocalhost("https://example.com")) {
+            try LocalModel(config: config).versionRequest()
+        }
+    }
+
     @Test func pageTextIsClipped() {
         #expect(LocalModel.clip("abcdef", limit: 3) == "abc")
         #expect(LocalModel.clip("ab", limit: 3) == "ab")
