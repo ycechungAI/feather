@@ -885,47 +885,170 @@ final class LocalChatView: NSView {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.fetchTasks() }
     }
 
+    private func taskBackupsDirectory() -> URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("FeatherA/task-backups", isDirectory: true)
+        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        return base
+    }
+
+    private func listTaskBackups() -> [URL] {
+        let dir = taskBackupsDirectory()
+        let fm = FileManager.default
+        var files = (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.creationDateKey], options: [.skipsHiddenFiles])) ?? []
+        files = files.filter { $0.pathExtension == "json" && $0.lastPathComponent.hasPrefix("saved_tasks_") }
+        files.sort { a, b in
+            let da = (try? a.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
+            let db = (try? b.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
+            return da > db
+        }
+        // include legacy latest file if present
+        let legacy = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("FeatherA/saved_tasks.json")
+        if fm.fileExists(atPath: legacy.path) && !files.contains(legacy) {
+            files.append(legacy)
+        }
+        return files
+    }
+
     @objc private func saveTasksClicked(_ sender: Any?) {
-        guard let url = URL(string: "http://127.0.0.1:8787/api/tasks") else { return }
-        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
-            guard let data else { return }
-            let dest = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-                .appendingPathComponent("FeatherA/saved_tasks.json")
-            try? FileManager.default.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try? data.write(to: dest, options: .atomic)
-            DispatchQueue.main.async {
-                let a = NSAlert()
-                a.messageText = "Tasks saved"
-                a.runModal()
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            guard let listURL = URL(string: "http://127.0.0.1:8787/api/tasks") else { return }
+            do {
+                let (data, _) = try await URLSession.shared.data(from: listURL)
+                guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let tasks = obj["tasks"] as? [[String: Any]] else {
+                    self.showTaskAlert("Save failed", "Could not read tasks from scheduler.")
+                    return
+                }
+                var files: [String: String] = [:]
+                var missing: [String] = []
+                for t in tasks {
+                    guard let filename = t["filename"] as? String,
+                          let fileURL = URL(string: "http://127.0.0.1:8787/api/tasks/file/\(filename)") else { continue }
+                    do {
+                        let (fd, _) = try await URLSession.shared.data(from: fileURL)
+                        if let fo = try JSONSerialization.jsonObject(with: fd) as? [String: Any],
+                           let content = fo["content"] as? String {
+                            files[filename] = content
+                        } else {
+                            missing.append(filename)
+                        }
+                    } catch {
+                        missing.append(filename)
+                    }
+                }
+                let formatter = ISO8601DateFormatter()
+                let savedAt = formatter.string(from: Date())
+                let backup: [String: Any] = ["version": 1, "saved_at": savedAt, "tasks": tasks, "files": files]
+                let out = try JSONSerialization.data(withJSONObject: backup, options: [.prettyPrinted, .sortedKeys])
+                let ts = savedAt.replacingOccurrences(of: ":", with: "-")
+                let dir = self.taskBackupsDirectory()
+                let hist = dir.appendingPathComponent("saved_tasks_\(ts).json")
+                try out.write(to: hist, options: .atomic)
+                let latest = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                    .appendingPathComponent("FeatherA/saved_tasks.json")
+                try? FileManager.default.createDirectory(at: latest.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try out.write(to: latest, options: .atomic)
+                var msg = "Saved \(tasks.count) task(s), \(files.count) file(s) with content."
+                if !missing.isEmpty { msg += "\nMissing content for: \(missing.joined(separator: ", "))" }
+                msg += "\nBackup: \(hist.lastPathComponent)"
+                self.showTaskAlert("Tasks saved", msg)
+            } catch {
+                self.showTaskAlert("Save failed", "\(error.localizedDescription)\nIs the scheduler running on :8787?")
             }
-        }.resume()
+        }
     }
 
     @objc private func restoreTasksClicked(_ sender: Any?) {
-        let src = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("FeatherA/saved_tasks.json")
-        guard let data = try? Data(contentsOf: src),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let tasks = obj["tasks"] as? [[String: Any]] else {
-            let a = NSAlert(); a.messageText = "No saved tasks"; a.runModal(); return
+        let backups = listTaskBackups()
+        guard !backups.isEmpty else {
+            showTaskAlert("No saved tasks", "No task backups found. Use Save first.")
+            return
         }
-        // Recreate each task via POST
-        for t in tasks {
-            guard let filename = t["filename"] as? String else { continue }
-            // fetch file content
-            guard let url = URL(string: "http://127.0.0.1:8787/api/tasks/file/\(filename)") else { continue }
-            URLSession.shared.dataTask(with: url) { data, _, _ in
-                guard let data, let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let content = o["content"] as? String else { return }
-                guard let createURL = URL(string: "http://127.0.0.1:8787/api/tasks/file") else { return }
-                var req = URLRequest(url: createURL)
-                req.httpMethod = "POST"
-                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                req.httpBody = try? JSONSerialization.data(withJSONObject: ["filename": filename, "content": content])
-                URLSession.shared.dataTask(with: req) { _, _, _ in }.resume()
-            }.resume()
+        let alert = NSAlert()
+        alert.messageText = "Restore tasks"
+        alert.informativeText = "Choose a backup to restore. Task file contents from the backup will be posted to the scheduler."
+        alert.addButton(withTitle: "Restore")
+        alert.addButton(withTitle: "Cancel")
+        let picker = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 360, height: 24), pullsDown: false)
+        let df = DateFormatter()
+        df.dateStyle = .short
+        df.timeStyle = .medium
+        for url in backups {
+            let name = url.lastPathComponent
+            let date = (try? url.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey]).contentModificationDate) ?? (try? url.resourceValues(forKeys: [.creationDateKey]).creationDate)
+            let label = date.map { "\(name) (\(df.string(from: $0)))" } ?? name
+            picker.addItem(withTitle: label)
+            picker.lastItem?.representedObject = url
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.fetchTasks() }
+        alert.accessoryView = picker
+        guard let window = self.window else { return }
+        alert.beginSheetModal(for: window) { [weak self] resp in
+            guard resp == .alertFirstButtonReturn,
+                  let url = picker.selectedItem?.representedObject as? URL else { return }
+            self?.restoreTasks(from: url)
+        }
+    }
+
+    private func restoreTasks(from src: URL) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let data = try Data(contentsOf: src)
+                guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let tasks = obj["tasks"] as? [[String: Any]] else {
+                    self.showTaskAlert("Restore failed", "Backup format not recognized.")
+                    return
+                }
+                let files = obj["files"] as? [String: String] ?? [:]
+                var ok = 0
+                var failed: [String] = []
+                for t in tasks {
+                    guard let filename = t["filename"] as? String else { continue }
+                    var content = files[filename]
+                    if content == nil {
+                        // legacy fallback: try to fetch from scheduler
+                        if let fileURL = URL(string: "http://127.0.0.1:8787/api/tasks/file/\(filename)"),
+                           let (fd, _) = try? await URLSession.shared.data(from: fileURL),
+                           let fo = try? JSONSerialization.jsonObject(with: fd) as? [String: Any] {
+                            content = fo["content"] as? String
+                        }
+                    }
+                    guard let content else { failed.append(filename); continue }
+                    guard let createURL = URL(string: "http://127.0.0.1:8787/api/tasks/file") else { failed.append(filename); continue }
+                    var req = URLRequest(url: createURL)
+                    req.httpMethod = "POST"
+                    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    req.httpBody = try JSONSerialization.data(withJSONObject: ["filename": filename, "content": content])
+                    do {
+                        let (_, resp) = try await URLSession.shared.data(for: req)
+                        if let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) || http.statusCode == 409 {
+                            ok += 1
+                        } else {
+                            failed.append(filename)
+                        }
+                    } catch {
+                        failed.append(filename)
+                    }
+                }
+                self.fetchTasks()
+                var msg = "Restored \(ok)/\(tasks.count) task(s) from \(src.lastPathComponent)."
+                if !files.isEmpty { msg += "\nUsed embedded file contents from backup." }
+                if !failed.isEmpty { msg += "\nFailed: \(failed.joined(separator: ", "))" }
+                self.showTaskAlert("Restore complete", msg)
+            } catch {
+                self.showTaskAlert("Restore failed", error.localizedDescription)
+            }
+        }
+    }
+
+    private func showTaskAlert(_ title: String, _ message: String) {
+        let a = NSAlert()
+        a.messageText = title
+        a.informativeText = message
+        a.runModal()
     }
 
     private func updateTaskPageControls(totalPages: Int) {
