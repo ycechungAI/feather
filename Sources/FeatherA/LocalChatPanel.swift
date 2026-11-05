@@ -813,10 +813,26 @@ final class LocalChatView: NSView {
     private func loadResult(runId: Int) {
         guard let url = URL(string: "http://127.0.0.1:8787/api/runs/\(runId)/report") else { return }
         URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
-            guard let data, let text = String(data: data, encoding: .utf8) else { return }
+            let report = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+            let run = self?.currentRuns.first(where: { ($0["id"] as? Int) == runId })
+            var info: [String] = []
+            if let r = run {
+                info.append("Status: \(r["status"] as? String ?? "?")")
+                info.append("Model: \(r["model"] as? String ?? "?")")
+                info.append("Iterations: \(r["iterations"] as? Int ?? 0)")
+                info.append("Tool calls: \(r["tool_calls"] as? Int ?? 0)")
+                if let err = r["error"] as? String, !err.isEmpty { info.append("Error: \(err)") }
+                if let started = r["started_at"] as? String { info.append("Started: \(started)") }
+                if let finished = r["finished_at"] as? String { info.append("Finished: \(finished)") }
+            }
+            let header = info.joined(separator: "\n")
+            let body = report.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? "(no report written)" : report
+            let full = header + "\n\n" + body
             DispatchQueue.main.async {
-                self?.resultsTextView.string = text
-                self?.logsTextView.string += "\n=== Task Result ===\n" + text + "\n"
+                guard let self else { return }
+                self.resultsTextView.string = full
+                self.logsTextView.string += "\n=== Task Result ===\n" + full + "\n"
             }
         }.resume()
     }
