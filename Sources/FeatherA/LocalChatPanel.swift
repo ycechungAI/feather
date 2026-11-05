@@ -209,6 +209,7 @@ final class LocalChatView: NSView {
         tasksContainer.addSubview(taskButtonBar)
         tasksContainer.addSubview(modelPicker)
         tasksContainer.addSubview(taskBottomBar)
+        tasksContainer.addSubview(taskFilterPicker)
         taskButtonBar.translatesAutoresizingMaskIntoConstraints = false
         taskButtonBar.orientation = .vertical
         taskButtonBar.spacing = 4
