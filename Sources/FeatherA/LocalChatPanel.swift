@@ -611,8 +611,19 @@ final class LocalChatView: NSView {
             row.orientation = .horizontal
             row.spacing = 6
             row.alignment = .centerY
-            let label = NSTextField(labelWithString: String(format: "%2d  %@ %@   %@ · %@ · %@", i+1, enabled ? "●" : "○", name, sched, status, next))
-            label.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+            let rowColor: NSColor
+            switch status {
+            case "running": rowColor = NSColor(calibratedRed: 1.0, green: 1.0, blue: 0.2, alpha: 1.0)
+            case "failed": rowColor = NSColor(calibratedRed: 1.0, green: 0.2, blue: 0.2, alpha: 1.0)
+            default: rowColor = NSColor(calibratedRed: 0.2, green: 1.0, blue: 0.2, alpha: 1.0)
+            }
+            let green = NSColor(calibratedRed: 0.2, green: 1.0, blue: 0.2, alpha: 1.0)
+            let attr = NSMutableAttributedString()
+            let numStr = String(format: "%2d", i+1)
+            attr.append(NSAttributedString(string: numStr, attributes: [.foregroundColor: green, .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)]))
+            attr.append(NSAttributedString(string: String(format: "  %@ %@   %@ · %@ · %@", enabled ? "●" : "○", name, sched, status, next), attributes: [.foregroundColor: rowColor, .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)]))
+            let label = NSTextField(labelWithString: "")
+            label.attributedStringValue = attr
             if self.panelPosition == "bottom" {
                 label.lineBreakMode = .byWordWrapping
                 label.maximumNumberOfLines = 0
@@ -620,13 +631,6 @@ final class LocalChatView: NSView {
                 label.lineBreakMode = .byTruncatingTail
                 label.maximumNumberOfLines = 1
             }
-            let rowColor: NSColor
-            switch status {
-            case "running": rowColor = NSColor(calibratedRed: 1.0, green: 1.0, blue: 0.2, alpha: 1.0)
-            case "failed": rowColor = NSColor(calibratedRed: 1.0, green: 0.2, blue: 0.2, alpha: 1.0)
-            default: rowColor = NSColor(calibratedRed: 0.2, green: 1.0, blue: 0.2, alpha: 1.0)
-            }
-            label.textColor = rowColor
             label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             let editBtn = NSButton(title: "Edit", target: self, action: #selector(self.editTaskByIndex(_:)))
             editBtn.bezelStyle = .recessed
