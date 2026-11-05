@@ -596,9 +596,14 @@ final class LocalChatView: NSView {
             row.alignment = .centerY
             let label = NSTextField(labelWithString: String(format: "%2d  %@ %@   %@ · %@ · %@", i+1, enabled ? "●" : "○", name, sched, status, next))
             label.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+            if panelPosition == "bottom" {
+                label.lineBreakMode = .byWordWrapping
+                label.maximumNumberOfLines = 0
+            } else {
+                label.lineBreakMode = .byTruncatingTail
+                label.maximumNumberOfLines = 1
+            }
             label.textColor = NSColor(calibratedRed: 0.2, green: 1.0, blue: 0.2, alpha: 1.0)
-            label.lineBreakMode = .byWordWrapping
-            label.maximumNumberOfLines = 0
             label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             let editBtn = NSButton(title: "Edit", target: self, action: #selector(self.editTaskByIndex(_:)))
             editBtn.bezelStyle = .recessed
