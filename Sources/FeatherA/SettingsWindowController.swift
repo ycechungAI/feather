@@ -9,6 +9,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private let home = NSTextField()
     private let sleep = NSPopUpButton()
     private let cacheLimit = NSPopUpButton()
+    private let askPosition = NSPopUpButton()
     private var shields: NSButton!
     private var httpsOnly: NSButton!
     private var suggestions: NSButton!
@@ -26,6 +27,12 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
 
     private static let cacheChoices: [(String, Int)] = [
         ("250 MB", 250), ("500 MB", 500), ("1 GB", 1000), ("2 GB", 2000), ("5 GB", 5000),
+    ]
+
+    private static let askPositionChoices: [(String, String)] = [
+        ("Right", "right"),
+        ("Left", "left"),
+        ("Bottom", "bottom"),
     ]
 
     private init() {
@@ -123,6 +130,13 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         defaultStatus.textColor = .secondaryLabelColor
         defaultStatus.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
 
+        askPosition.addItems(withTitles: Self.askPositionChoices.map(\.0))
+        askPosition.target = self
+        askPosition.action = #selector(askPositionChanged(_:))
+        if let i = Self.askPositionChoices.firstIndex(where: { $0.1 == Settings.askPanelPosition }) {
+            askPosition.selectItem(at: i)
+        }
+
         let homeRow = NSStackView(views: [home, useCurrent])
         let suggestionsBox = NSStackView(views: [suggestions, suggestionsNote])
         suggestionsBox.orientation = .vertical
@@ -143,6 +157,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             [label("Startup:"), restore],
             [label("Default browser:"), defaultBox],
             [label("Developer:"), inspectorBox],
+            [label("Ask AI panel:"), askPosition],
         ])
         grid.column(at: 0).xPlacement = .trailing
         grid.rowAlignment = .firstBaseline
@@ -153,6 +168,8 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         grid.row(at: 8).yPlacement = .top
         grid.row(at: 9).topPadding = 6
         grid.row(at: 10).topPadding = 6
+        grid.row(at: 13).yPlacement = .top
+        grid.row(at: 13).rowAlignment = .none
         customSearch.widthAnchor.constraint(equalToConstant: 320).isActive = true
         home.widthAnchor.constraint(equalToConstant: 300).isActive = true
         suggestionsNote.preferredMaxLayoutWidth = 340
@@ -218,6 +235,13 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     }
 
     // MARK: Actions
+
+    @objc private func askPositionChanged(_ sender: NSPopUpButton) {
+        let index = sender.indexOfSelectedItem
+        let value = index >= 0 && index < Self.askPositionChoices.count ? Self.askPositionChoices[index].1 : "right"
+        Settings.askPanelPosition = value
+        NotificationCenter.default.post(name: Settings.changed, object: nil)
+    }
 
     @objc private func engineChanged(_ sender: NSPopUpButton) {
         let i = sender.indexOfSelectedItem

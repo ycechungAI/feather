@@ -58,6 +58,7 @@ enum Settings {
             "keepSignedIn": ["google.com", "gmail.com", "youtube.com"],
             "cacheLimitMB": 500,
             "webInspector": false,
+            "askPanelPosition": "right",
         ])
     }
 
@@ -134,6 +135,12 @@ enum Settings {
     static var webInspector: Bool {
         get { d.bool(forKey: "webInspector") }
         set { d.set(newValue, forKey: "webInspector") }
+    }
+
+    /// Where the Ask AI side panel docks: "right" (default), "left", or "bottom".
+    static var askPanelPosition: String {
+        get { d.string(forKey: "askPanelPosition") ?? "right" }
+        set { d.set(newValue, forKey: "askPanelPosition") }
     }
 
     /// Whether ad and tracker blocking should run on pages from `host`.

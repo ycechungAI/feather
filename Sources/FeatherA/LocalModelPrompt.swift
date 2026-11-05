@@ -1,8 +1,8 @@
 import AppKit
 import WebKit
 
-/// The "Ask Local Model" sheet: the request is routed by the small decision model, then answered by
-/// the answer model. Local only; see docs/AGENTIC.md.
+/// The "Ask Local Model" panel: the request is routed by the small decision model, then answered by
+/// the answer model. Local only; see docs/AGENTIC.md. Lives in a chat side panel, not a popup.
 @MainActor
 enum LocalModelPrompt {
     static func ask(webView: WKWebView, window: NSWindow) {
@@ -27,20 +27,9 @@ enum LocalModelPrompt {
     }
 
     private static func askQuestion(pageText: String, window: NSWindow) {
-        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 380, height: 24))
-        field.placeholderString = "Ask about this page"
-        let alert = NSAlert()
-        alert.messageText = "Ask the local model"
-        alert.informativeText = "Runs on this Mac with Ollama. The page text doesn't leave it."
-        alert.accessoryView = field
-        alert.addButton(withTitle: "Ask")
-        alert.addButton(withTitle: "Cancel")
-        alert.window.initialFirstResponder = field
-        alert.beginSheetModal(for: window) { response in
-            let question = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard response == .alertFirstButtonReturn, !question.isEmpty else { return }
-            Task { @MainActor in await route(question: question, pageText: pageText, window: window) }
-        }
+        // The chat side panel replaces the old alert popup: it opens docked to the side of the
+        // browser window with a history and an input field, and answers in place.
+        LocalChatPanel.shared.show(pageText: pageText, owner: window)
     }
 
     private static func route(question: String, pageText: String, window: NSWindow) async {
