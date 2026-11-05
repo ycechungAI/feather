@@ -1587,6 +1587,10 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         }
         NSLayoutConstraint.activate(webAreaConstraints + askPanelConstraints)
         askPanel.isHidden = false
+        askPanel.needsLayout = true
+        content.needsLayout = true
+        content.layoutSubtreeIfNeeded()
+        log("after layout askPanel.frame=\(askPanel.frame) hidden=\(askPanel.isHidden) webArea.frame=\(webArea.frame)")
     }
 
     func hideAskPanel() {
