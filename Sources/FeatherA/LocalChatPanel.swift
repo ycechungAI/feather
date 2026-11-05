@@ -769,7 +769,7 @@ final class LocalChatView: NSView {
     @objc private func runPicked(_ sender: NSPopUpButton) {
         let idx = sender.indexOfSelectedItem
         guard idx >= 0, idx < currentRuns.count else { return }
-        guard let runId = currentRuns[idx]["id"] as? Int else { return }
+        guard let runId = currentRuns[idx]["run_id"] as? Int else { return }
         loadResult(runId: runId)
     }
 
@@ -786,7 +786,7 @@ final class LocalChatView: NSView {
                     let status = r["status"] as? String ?? "?"
                     self.runPicker.addItem(withTitle: "\(started) [\(status)]")
                 }
-                if let latest = runs.first, let runId = latest["id"] as? Int {
+                if let latest = runs.first, let runId = latest["run_id"] as? Int {
                     self.runPicker.selectItem(at: 0)
                     self.loadResult(runId: runId)
                 }
@@ -801,7 +801,7 @@ final class LocalChatView: NSView {
             guard let data, let runs = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
                   let latest = runs.first else { return }
             let status = latest["status"] as? String ?? "running"
-            let runId = latest["id"] as? Int
+            let runId = latest["run_id"] as? Int
             DispatchQueue.main.async {
                 guard let self else { return }
                 // show partial result while running
@@ -867,7 +867,7 @@ final class LocalChatView: NSView {
         guard let url = URL(string: "http://127.0.0.1:8787/api/runs/\(runId)/report") else { return }
         URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
             let report = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-            let run = self?.currentRuns.first(where: { ($0["id"] as? Int) == runId })
+            let run = self?.currentRuns.first(where: { ($0["run_id"] as? Int) == runId })
             var info: [String] = []
             if let r = run {
                 info.append("Status: \(r["status"] as? String ?? "?")")
