@@ -20,6 +20,9 @@ final class LocalChatView: NSView {
     private let tasksContainer = NSView()
     private let tasksScrollView = NSScrollView()
     private let tasksTextView = NSTextView()
+    private let resultsContainer = NSView()
+    private let resultsScrollView = NSScrollView()
+    private let resultsTextView = NSTextView()
     private let taskButtonBar = NSStackView()
     private let taskBottomBar = NSStackView()
     private var taskButtons: [NSButton] = []
@@ -64,10 +67,11 @@ final class LocalChatView: NSView {
         nameLabel.textColor = NSColor.white
 
         tabControl.translatesAutoresizingMaskIntoConstraints = false
-        tabControl.segmentCount = 3
+        tabControl.segmentCount = 4
         tabControl.setLabel("Ask", forSegment: 0)
         tabControl.setLabel("Logs", forSegment: 1)
         tabControl.setLabel("Tasks", forSegment: 2)
+        tabControl.setLabel("Results", forSegment: 3)
         tabControl.selectedSegment = 0
         tabControl.target = self
         tabControl.action = #selector(tabChanged(_:))
@@ -217,13 +221,42 @@ final class LocalChatView: NSView {
             taskBottomBar.heightAnchor.constraint(equalToConstant: 28),
         ])
 
+        // Results
+        resultsContainer.translatesAutoresizingMaskIntoConstraints = false
+        resultsScrollView.translatesAutoresizingMaskIntoConstraints = false
+        resultsScrollView.hasVerticalScroller = true
+        resultsScrollView.scrollerStyle = .legacy
+        resultsScrollView.borderType = .bezelBorder
+        resultsScrollView.documentView = resultsTextView
+        resultsTextView.frame = NSRect(x: 0, y: 0, width: 400, height: 200)
+        resultsTextView.autoresizingMask = [.width]
+        resultsTextView.isEditable = false
+        resultsTextView.isSelectable = true
+        resultsTextView.drawsBackground = true
+        resultsTextView.backgroundColor = NSColor.black
+        resultsTextView.textColor = NSColor(calibratedRed: 0.2, green: 1.0, blue: 0.2, alpha: 1.0)
+        resultsTextView.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        resultsTextView.isVerticallyResizable = true
+        if let container = resultsTextView.textContainer {
+            container.widthTracksTextView = true
+        }
+        resultsContainer.addSubview(resultsScrollView)
+        NSLayoutConstraint.activate([
+            resultsScrollView.topAnchor.constraint(equalTo: resultsContainer.topAnchor),
+            resultsScrollView.leadingAnchor.constraint(equalTo: resultsContainer.leadingAnchor),
+            resultsScrollView.trailingAnchor.constraint(equalTo: resultsContainer.trailingAnchor),
+            resultsScrollView.bottomAnchor.constraint(equalTo: resultsContainer.bottomAnchor),
+        ])
+
         // Assemble
         addSubview(headerView)
         addSubview(chatContainer)
         addSubview(logsContainer)
         addSubview(tasksContainer)
+        addSubview(resultsContainer)
         logsContainer.isHidden = true
         tasksContainer.isHidden = true
+        resultsContainer.isHidden = true
 
         NSLayoutConstraint.activate([
             headerView.topAnchor.constraint(equalTo: topAnchor),
@@ -257,6 +290,11 @@ final class LocalChatView: NSView {
             tasksContainer.leadingAnchor.constraint(equalTo: leadingAnchor),
             tasksContainer.trailingAnchor.constraint(equalTo: trailingAnchor),
             tasksContainer.bottomAnchor.constraint(equalTo: bottomAnchor),
+
+            resultsContainer.topAnchor.constraint(equalTo: headerView.bottomAnchor),
+            resultsContainer.leadingAnchor.constraint(equalTo: leadingAnchor),
+            resultsContainer.trailingAnchor.constraint(equalTo: trailingAnchor),
+            resultsContainer.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
 
         // Resize handle
@@ -361,6 +399,7 @@ final class LocalChatView: NSView {
         chatContainer.isHidden = sender.selectedSegment != 0
         logsContainer.isHidden = sender.selectedSegment != 1
         tasksContainer.isHidden = sender.selectedSegment != 2
+        resultsContainer.isHidden = sender.selectedSegment != 3
         if sender.selectedSegment == 2 {
             fetchTasks()
         }
@@ -453,7 +492,9 @@ final class LocalChatView: NSView {
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             req.httpBody = try? JSONSerialization.data(withJSONObject: ["filename": filename, "content": content])
             URLSession.shared.dataTask(with: req) { _, _, _ in
-                DispatchQueue.main.async { self.fetchTasks() }
+                DispatchQueue.main.async {
+                    self.fetchTasks()
+                }
             }.resume()
         }
     }
@@ -605,6 +646,24 @@ final class LocalChatView: NSView {
         if abs(bounds.width - lastButtonWidth) > 40 {
             setupTaskButtons()
         }
+    }
+
+    private func fetchLatestResult(taskId: String) {
+        guard let url = URL(string: "http://127.0.0.1:8787/api/tasks/\(taskId)/runs") else { return }
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+            guard let data, let runs = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+                  let latest = runs.first, let runId = latest["id"] as? Int else { return }
+            guard let reportURL = URL(string: "http://127.0.0.1:8787/api/runs/\(runId)/report") else { return }
+            URLSession.shared.dataTask(with: reportURL) { [weak self] data, _, _ in
+                guard let data, let text = String(data: data, encoding: .utf8) else { return }
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.resultsTextView.string = text
+                    self.tabControl.selectedSegment = 3
+                    self.tabChanged(self.tabControl)
+                }
+            }.resume()
+        }.resume()
     }
 
     private func answer(question: String) async {
