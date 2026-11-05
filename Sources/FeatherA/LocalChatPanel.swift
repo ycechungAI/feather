@@ -255,21 +255,21 @@ final class LocalChatView: NSView {
         taskFilterPicker.menu?.appearance = NSAppearance(named: .darkAqua)
         // buttons created in setupTaskButtons() called from configure
         NSLayoutConstraint.activate([
-            taskFilterPicker.topAnchor.constraint(equalTo: tasksContainer.topAnchor, constant: 2),
+            taskFilterPicker.topAnchor.constraint(equalTo: tasksContainer.topAnchor, constant: 0),
             taskFilterPicker.leadingAnchor.constraint(equalTo: tasksContainer.leadingAnchor, constant: 8),
             taskFilterPicker.widthAnchor.constraint(equalTo: tasksContainer.widthAnchor, multiplier: 0.5, constant: -12),
             taskFilterPicker.heightAnchor.constraint(equalToConstant: 22),
-            taskButtonBar.topAnchor.constraint(equalTo: taskFilterPicker.bottomAnchor, constant: 4),
+            taskButtonBar.topAnchor.constraint(equalTo: taskFilterPicker.bottomAnchor, constant: 2),
             taskButtonBar.leadingAnchor.constraint(equalTo: tasksContainer.leadingAnchor, constant: 8),
             taskButtonBar.trailingAnchor.constraint(equalTo: tasksContainer.trailingAnchor, constant: -8),
-            tasksScrollView.topAnchor.constraint(equalTo: taskButtonBar.bottomAnchor, constant: 4),
+            tasksScrollView.topAnchor.constraint(equalTo: taskButtonBar.bottomAnchor, constant: 2),
             tasksScrollView.leadingAnchor.constraint(equalTo: tasksContainer.leadingAnchor),
             tasksScrollView.trailingAnchor.constraint(equalTo: tasksContainer.trailingAnchor),
-            tasksScrollView.bottomAnchor.constraint(equalTo: taskBottomBar.topAnchor, constant: -4),
+            tasksScrollView.bottomAnchor.constraint(equalTo: taskBottomBar.topAnchor, constant: -2),
             tasksContentStack.widthAnchor.constraint(equalTo: tasksScrollView.widthAnchor),
             taskBottomBar.leadingAnchor.constraint(equalTo: tasksContainer.leadingAnchor, constant: 8),
             taskBottomBar.trailingAnchor.constraint(equalTo: tasksContainer.trailingAnchor, constant: -8),
-            taskBottomBar.bottomAnchor.constraint(equalTo: tasksContainer.bottomAnchor, constant: -4),
+            taskBottomBar.bottomAnchor.constraint(equalTo: tasksContainer.bottomAnchor, constant: -2),
             taskBottomBar.heightAnchor.constraint(equalToConstant: 24),
         ])
 
