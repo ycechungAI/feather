@@ -1523,7 +1523,6 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         askPanel.configure(pageText: pageText, position: pos)
         askPanel.onResize = { [weak self] newSize in
             self?.askPanelSizeConstraint?.constant = newSize
-            Settings.askPanelWidth = Double(newSize)
         }
         NSLayoutConstraint.deactivate(webAreaConstraints + askPanelConstraints)
         askPanelConstraints.removeAll()
@@ -1542,7 +1541,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
                 askPanel.topAnchor.constraint(equalTo: findBar.bottomAnchor),
                 askPanel.leadingAnchor.constraint(equalTo: content.leadingAnchor),
                 askPanel.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-                { let c = askPanel.widthAnchor.constraint(equalToConstant: max(CGFloat(Settings.askPanelWidth), 400)); self.askPanelSizeConstraint = c; return c }(),
+                { let c = askPanel.widthAnchor.constraint(equalToConstant: 400); self.askPanelSizeConstraint = c; return c }(),
                 webArea.leadingAnchor.constraint(equalTo: askPanel.trailingAnchor),
             ]
         case "bottom":
@@ -1576,7 +1575,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
                 askPanel.topAnchor.constraint(equalTo: findBar.bottomAnchor),
                 askPanel.trailingAnchor.constraint(equalTo: content.trailingAnchor),
                 askPanel.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-                { let c = askPanel.widthAnchor.constraint(equalToConstant: max(CGFloat(Settings.askPanelWidth), 400)); self.askPanelSizeConstraint = c; return c }(),
+                { let c = askPanel.widthAnchor.constraint(equalToConstant: 400); self.askPanelSizeConstraint = c; return c }(),
                 webArea.trailingAnchor.constraint(equalTo: askPanel.leadingAnchor),
             ]
         }
