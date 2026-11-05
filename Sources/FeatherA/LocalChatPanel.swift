@@ -228,6 +228,9 @@ final class LocalChatView: NSView {
         taskRowsStack.spacing = 2
         taskRowsStack.alignment = .leading
         tasksScrollView.documentView = taskRowsStack
+        NSLayoutConstraint.activate([
+            taskRowsStack.widthAnchor.constraint(equalTo: tasksScrollView.widthAnchor),
+        ])
         tasksTextView.frame = NSRect(x: 0, y: 0, width: 400, height: 200)
         tasksTextView.autoresizingMask = [.width]
         tasksTextView.isEditable = false
