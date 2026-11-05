@@ -238,6 +238,7 @@ final class LocalChatView: NSView {
         tasksContainer.addSubview(taskButtonBar)
         tasksContainer.addSubview(taskBottomBar)
         taskBottomBar.addArrangedSubview(taskFilterPicker)
+        taskFilterPicker.widthAnchor.constraint(lessThanOrEqualToConstant: 120).isActive = true
         taskButtonBar.translatesAutoresizingMaskIntoConstraints = false
         taskButtonBar.orientation = .vertical
         taskButtonBar.spacing = 4
@@ -625,7 +626,7 @@ final class LocalChatView: NSView {
         }
         if twoColumns {
             let width = self.bounds.width > 0 ? self.bounds.width : 1280
-            let ncols = width >= 900 ? 3 : (width >= 500 ? 2 : 1)
+            let ncols = 1
             var cols: [NSStackView] = (0..<ncols).map { _ in
                 let st = NSStackView()
                 st.orientation = .vertical
