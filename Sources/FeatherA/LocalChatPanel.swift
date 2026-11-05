@@ -31,6 +31,7 @@ final class LocalChatView: NSView {
     private var logsMode: Bool = false
     private let taskButtonBar = NSStackView()
     private let taskBottomBar = NSStackView()
+    private let taskFilterPicker = NSPopUpButton()
     private let modelPicker = NSPopUpButton()
     private var availableModels: [String] = []
     private var selectedRunModel: String? = nil
@@ -216,12 +217,19 @@ final class LocalChatView: NSView {
         taskBottomBar.orientation = .horizontal
         taskBottomBar.spacing = 6
         taskBottomBar.alignment = .centerY
+        taskFilterPicker.translatesAutoresizingMaskIntoConstraints = false
+        taskFilterPicker.target = self
+        taskFilterPicker.action = #selector(taskFilterChanged(_:))
         modelPicker.translatesAutoresizingMaskIntoConstraints = false
         modelPicker.target = self
         modelPicker.action = #selector(modelPicked(_:))
         // buttons created in setupTaskButtons() called from configure
         NSLayoutConstraint.activate([
-            taskButtonBar.topAnchor.constraint(equalTo: tasksContainer.topAnchor, constant: 4),
+            taskFilterPicker.topAnchor.constraint(equalTo: tasksContainer.topAnchor, constant: 4),
+            taskFilterPicker.leadingAnchor.constraint(equalTo: tasksContainer.leadingAnchor, constant: 8),
+            taskFilterPicker.trailingAnchor.constraint(equalTo: tasksContainer.trailingAnchor, constant: -8),
+            taskFilterPicker.heightAnchor.constraint(equalToConstant: 24),
+            taskButtonBar.topAnchor.constraint(equalTo: taskFilterPicker.bottomAnchor, constant: 4),
             taskButtonBar.leadingAnchor.constraint(equalTo: tasksContainer.leadingAnchor, constant: 8),
             taskButtonBar.trailingAnchor.constraint(equalTo: tasksContainer.trailingAnchor, constant: -8),
             tasksScrollView.topAnchor.constraint(equalTo: taskButtonBar.bottomAnchor, constant: 4),
@@ -534,6 +542,12 @@ final class LocalChatView: NSView {
                     lines.append("")
                 }
                 self.currentTasks = tasks
+                self.taskFilterPicker.removeAllItems()
+                self.taskFilterPicker.addItem(withTitle: "All")
+                for t in tasks {
+                    self.taskFilterPicker.addItem(withTitle: t["name"] as? String ?? "?")
+                }
+                self.taskFilterPicker.selectItem(at: 0)
                 self.tasksTextView.string = lines.joined(separator: "\n")
                 self.fetchModels()
             }
@@ -892,6 +906,26 @@ final class LocalChatView: NSView {
                 DispatchQueue.main.async { completion() }
             }.resume()
         }.resume()
+    }
+
+    @objc private func taskFilterChanged(_ sender: NSPopUpButton) {
+        let idx = sender.indexOfSelectedItem
+        if idx <= 0 {
+            fetchTasks()
+            return
+        }
+        let task = currentTasks[idx - 1]
+        guard let taskId = task["id"] as? String else { return }
+        // show details
+        var lines: [String] = []
+        lines.append("Task: \(task["name"] as? String ?? "?")")
+        lines.append("ID: \(taskId)")
+        lines.append("Schedule: \(task["schedule"] as? String ?? "?")")
+        lines.append("Enabled: \(task["enabled"] as? Bool ?? false)")
+        lines.append("Status: \(task["status"] as? String ?? "?")")
+        lines.append("Next run: \(task["next_run"] as? String ?? "?")")
+        lines.append("Model: \(task["model"] as? String ?? "?")")
+        tasksTextView.string = lines.joined(separator: "\n")
     }
 
     private func answer(question: String) async {
