@@ -416,7 +416,7 @@ final class LocalChatView: NSView {
                     let enabled = t["enabled"] as? Bool ?? false
                     let status = t["status"] as? String ?? "?"
                     let next = t["next_run"] as? String ?? "?"
-                    lines.append("\(i+1). \(enabled ? "●" : "○") \(name)")
+                    lines.append(String(format: "%2d  %@ %@", i+1, enabled ? "●" : "○", name))
                     lines.append("   schedule: \(sched)  status: \(status)")
                     lines.append("   next run: \(next)")
                     lines.append("")
