@@ -52,7 +52,7 @@ final class LocalChatView: NSView {
 
         tabControl.translatesAutoresizingMaskIntoConstraints = false
         tabControl.segmentCount = 2
-        tabControl.setLabel("Chat", forSegment: 0)
+        tabControl.setLabel("Ask", forSegment: 0)
         tabControl.setLabel("Logs", forSegment: 1)
         tabControl.selectedSegment = 0
         tabControl.target = self
