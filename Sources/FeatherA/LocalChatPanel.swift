@@ -192,6 +192,7 @@ final class LocalChatView: NSView {
 
         // Tasks
         tasksContainer.translatesAutoresizingMaskIntoConstraints = false
+        tasksContainer.appearance = NSAppearance(named: .darkAqua)
         tasksScrollView.translatesAutoresizingMaskIntoConstraints = false
         tasksScrollView.hasVerticalScroller = true
         tasksScrollView.scrollerStyle = .legacy
