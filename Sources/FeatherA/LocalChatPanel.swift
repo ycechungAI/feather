@@ -615,7 +615,13 @@ final class LocalChatView: NSView {
                 st.alignment = .leading
                 return st
             }
-            for (i, t) in tasks.enumerated() {
+            var padded = tasks
+            while padded.count < ncols * 2 { padded.append([:]) }
+            for (i, t) in padded.enumerated() {
+                if t.isEmpty {
+                    cols[i % ncols].addArrangedSubview(NSView())
+                    continue
+                }
                 cols[i % ncols].addArrangedSubview(makeRow(i, t))
             }
             let container = NSStackView(views: cols)
@@ -624,7 +630,13 @@ final class LocalChatView: NSView {
             container.alignment = .top
             taskRowsStack.addArrangedSubview(container)
         } else {
-            for (i, t) in tasks.enumerated() {
+            var padded = tasks
+            while padded.count < 3 { padded.append([:]) }
+            for (i, t) in padded.enumerated() {
+                if t.isEmpty {
+                    taskRowsStack.addArrangedSubview(NSView())
+                    continue
+                }
                 taskRowsStack.addArrangedSubview(makeRow(i, t))
             }
         }
