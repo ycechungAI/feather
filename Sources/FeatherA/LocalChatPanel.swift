@@ -223,9 +223,11 @@ final class LocalChatView: NSView {
         tasksScrollView.translatesAutoresizingMaskIntoConstraints = false
         tasksScrollView.hasVerticalScroller = false
         tasksScrollView.borderType = .bezelBorder
-        tasksContentStack.addArrangedSubview(taskRowsStack)
-        tasksContentStack.addArrangedSubview(tasksTextView)
-        tasksScrollView.documentView = tasksContentStack
+        taskRowsStack.translatesAutoresizingMaskIntoConstraints = false
+        taskRowsStack.orientation = .vertical
+        taskRowsStack.spacing = 2
+        taskRowsStack.alignment = .leading
+        tasksScrollView.documentView = taskRowsStack
         tasksTextView.frame = NSRect(x: 0, y: 0, width: 400, height: 200)
         tasksTextView.autoresizingMask = [.width]
         tasksTextView.isEditable = false
@@ -253,18 +255,6 @@ final class LocalChatView: NSView {
         taskButtonBar.orientation = .vertical
         taskButtonBar.spacing = 4
         taskButtonBar.alignment = .leading
-        taskRowsStack.translatesAutoresizingMaskIntoConstraints = false
-        taskRowsStack.orientation = .vertical
-        taskRowsStack.spacing = 2
-        taskRowsStack.alignment = .leading
-        tasksContentStack.translatesAutoresizingMaskIntoConstraints = false
-        tasksContentStack.orientation = .vertical
-        tasksContentStack.spacing = 0
-        tasksContentStack.alignment = .leading
-        taskBottomBar.translatesAutoresizingMaskIntoConstraints = false
-        taskBottomBar.orientation = .horizontal
-        taskBottomBar.spacing = 6
-        taskBottomBar.alignment = .centerY
         taskFilterPicker.translatesAutoresizingMaskIntoConstraints = false
         taskFilterPicker.target = self
         taskFilterPicker.action = #selector(taskFilterChanged(_:))
@@ -281,7 +271,6 @@ final class LocalChatView: NSView {
             tasksScrollView.leadingAnchor.constraint(equalTo: tasksContainer.leadingAnchor),
             tasksScrollView.trailingAnchor.constraint(equalTo: tasksContainer.trailingAnchor),
             tasksScrollView.bottomAnchor.constraint(equalTo: taskBottomBar.topAnchor, constant: -2),
-            tasksContentStack.widthAnchor.constraint(equalTo: tasksScrollView.widthAnchor),
             taskBottomBar.leadingAnchor.constraint(equalTo: tasksContainer.leadingAnchor, constant: 8),
             taskBottomBar.trailingAnchor.constraint(equalTo: tasksContainer.trailingAnchor, constant: -8),
             taskBottomBar.bottomAnchor.constraint(equalTo: tasksContainer.bottomAnchor, constant: -2),
@@ -591,54 +580,105 @@ final class LocalChatView: NSView {
             case "failed": rowColor = NSColor(calibratedRed: 1.0, green: 0.2, blue: 0.2, alpha: 1.0)
             default: rowColor = NSColor(calibratedRed: 0.2, green: 1.0, blue: 0.2, alpha: 1.0)
             }
-            let numLabel = NSTextField(labelWithString: String(format: "%2d", i+1))
-            numLabel.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
-            numLabel.textColor = NSColor(calibratedRed: 0.2, green: 1.0, blue: 0.2, alpha: 1.0)
-            numLabel.lineBreakMode = .byTruncatingTail
-            numLabel.maximumNumberOfLines = 1
-            numLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
-            numLabel.setContentHuggingPriority(.required, for: .horizontal)
-            let dotLabel = NSTextField(labelWithString: enabled ? "●" : "○")
-            dotLabel.font = NSFont.systemFont(ofSize: 9)
-            dotLabel.textColor = enabled ? rowColor : NSColor.secondaryLabelColor
-            dotLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
-            dotLabel.setContentHuggingPriority(.required, for: .horizontal)
-            let nameLabel = NSTextField(labelWithString: name)
-            nameLabel.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
-            nameLabel.textColor = NSColor.white
-            nameLabel.lineBreakMode = .byTruncatingTail
-            nameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-            let editBtn = NSButton(title: "Edit", target: self, action: #selector(self.editTaskByIndex(_:)))
-            editBtn.bezelStyle = .recessed
-            editBtn.controlSize = .mini
-            editBtn.tag = i
-            editBtn.contentTintColor = .white
-            editBtn.attributedTitle = NSAttributedString(string: "Edit", attributes: [.foregroundColor: NSColor.white, .font: NSFont.systemFont(ofSize: 10)])
-            editBtn.setContentHuggingPriority(.required, for: .horizontal)
-            let runBtn = NSButton(title: "Run", target: self, action: #selector(self.runTaskByIndex(_:)))
-            runBtn.bezelStyle = .recessed
-            runBtn.controlSize = .mini
-            runBtn.tag = i
-            runBtn.contentTintColor = .white
-            runBtn.attributedTitle = NSAttributedString(string: "Run", attributes: [.foregroundColor: NSColor.white, .font: NSFont.systemFont(ofSize: 10)])
-            runBtn.setContentHuggingPriority(.required, for: .horizontal)
-            let row1 = NSStackView(views: [numLabel, dotLabel, nameLabel, NSView(), editBtn, runBtn])
-            row1.orientation = .horizontal
-            row1.spacing = 6
-            row1.alignment = .centerY
-            (row1.arrangedSubviews[3] as! NSView).setContentHuggingPriority(.defaultLow, for: .horizontal)
-            let infoLabel = NSTextField(labelWithString: String(format: "%@  ·  %@  ·  %@", sched, status, next))
-            infoLabel.font = NSFont.systemFont(ofSize: 9)
-            infoLabel.textColor = NSColor.secondaryLabelColor
-            infoLabel.lineBreakMode = .byTruncatingTail
-            infoLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-            let row2 = NSStackView(views: [infoLabel])
-            row2.orientation = .horizontal
-            row2.spacing = 0
-            row2.alignment = .leading
-            row.addArrangedSubview(row1)
-            row.addArrangedSubview(row2)
-            return row
+            let green = NSColor(calibratedRed: 0.2, green: 1.0, blue: 0.2, alpha: 1.0)
+
+            if self.panelPosition == "bottom" {
+                // Bottom panel: two-row format
+                let numLabel = NSTextField(labelWithString: String(format: "%2d", i+1))
+                numLabel.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+                numLabel.textColor = green
+                numLabel.lineBreakMode = .byTruncatingTail
+                numLabel.maximumNumberOfLines = 1
+                numLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+                numLabel.setContentHuggingPriority(.required, for: .horizontal)
+                let dotLabel = NSTextField(labelWithString: enabled ? "●" : "○")
+                dotLabel.font = NSFont.systemFont(ofSize: 9)
+                dotLabel.textColor = enabled ? rowColor : NSColor.secondaryLabelColor
+                dotLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+                dotLabel.setContentHuggingPriority(.required, for: .horizontal)
+                let nameLabel = NSTextField(labelWithString: name)
+                nameLabel.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+                nameLabel.textColor = NSColor.white
+                nameLabel.lineBreakMode = .byTruncatingTail
+                nameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+                let editBtn = NSButton(title: "Edit", target: self, action: #selector(self.editTaskByIndex(_:)))
+                editBtn.bezelStyle = .recessed
+                editBtn.controlSize = .mini
+                editBtn.tag = i
+                editBtn.contentTintColor = .white
+                editBtn.attributedTitle = NSAttributedString(string: "Edit", attributes: [.foregroundColor: NSColor.white, .font: NSFont.systemFont(ofSize: 10)])
+                editBtn.setContentHuggingPriority(.required, for: .horizontal)
+                let runBtn = NSButton(title: "Run", target: self, action: #selector(self.runTaskByIndex(_:)))
+                runBtn.bezelStyle = .recessed
+                runBtn.controlSize = .mini
+                runBtn.tag = i
+                runBtn.contentTintColor = .white
+                runBtn.attributedTitle = NSAttributedString(string: "Run", attributes: [.foregroundColor: NSColor.white, .font: NSFont.systemFont(ofSize: 10)])
+                runBtn.setContentHuggingPriority(.required, for: .horizontal)
+                let row1 = NSStackView(views: [numLabel, dotLabel, nameLabel, NSView(), editBtn, runBtn])
+                row1.orientation = .horizontal
+                row1.spacing = 6
+                row1.alignment = .centerY
+                (row1.arrangedSubviews[3] as! NSView).setContentHuggingPriority(.defaultLow, for: .horizontal)
+                let infoLabel = NSTextField(labelWithString: String(format: "%@  ·  %@  ·  %@", sched, status, next))
+                infoLabel.font = NSFont.systemFont(ofSize: 9)
+                infoLabel.textColor = NSColor.secondaryLabelColor
+                infoLabel.lineBreakMode = .byTruncatingTail
+                infoLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+                let row2 = NSStackView(views: [infoLabel])
+                row2.orientation = .horizontal
+                row2.spacing = 0
+                row2.alignment = .leading
+                row.addArrangedSubview(row1)
+                row.addArrangedSubview(row2)
+                return row
+            } else {
+                // Side panel: compact single row
+                let numLabel = NSTextField(labelWithString: String(format: "%2d", i+1))
+                numLabel.font = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
+                numLabel.textColor = green
+                numLabel.lineBreakMode = .byTruncatingTail
+                numLabel.maximumNumberOfLines = 1
+                numLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+                numLabel.setContentHuggingPriority(.required, for: .horizontal)
+                let dotLabel = NSTextField(labelWithString: enabled ? "●" : "○")
+                dotLabel.font = NSFont.systemFont(ofSize: 8)
+                dotLabel.textColor = enabled ? rowColor : NSColor.secondaryLabelColor
+                dotLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+                dotLabel.setContentHuggingPriority(.required, for: .horizontal)
+                let nameLabel = NSTextField(labelWithString: name)
+                nameLabel.font = NSFont.systemFont(ofSize: 10)
+                nameLabel.textColor = NSColor.white
+                nameLabel.lineBreakMode = .byTruncatingTail
+                nameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+                let infoLabel = NSTextField(labelWithString: String(format: "%@ · %@ · %@", sched, status, next))
+                infoLabel.font = NSFont.systemFont(ofSize: 9)
+                infoLabel.textColor = NSColor.secondaryLabelColor
+                infoLabel.lineBreakMode = .byTruncatingTail
+                infoLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+                infoLabel.setContentHuggingPriority(.required, for: .horizontal)
+                let editBtn = NSButton(title: "Edit", target: self, action: #selector(self.editTaskByIndex(_:)))
+                editBtn.bezelStyle = .recessed
+                editBtn.controlSize = .mini
+                editBtn.tag = i
+                editBtn.contentTintColor = .white
+                editBtn.attributedTitle = NSAttributedString(string: "Edit", attributes: [.foregroundColor: NSColor.white, .font: NSFont.systemFont(ofSize: 9)])
+                editBtn.setContentHuggingPriority(.required, for: .horizontal)
+                let runBtn = NSButton(title: "Run", target: self, action: #selector(self.runTaskByIndex(_:)))
+                runBtn.bezelStyle = .recessed
+                runBtn.controlSize = .mini
+                runBtn.tag = i
+                runBtn.contentTintColor = .white
+                runBtn.attributedTitle = NSAttributedString(string: "Run", attributes: [.foregroundColor: NSColor.white, .font: NSFont.systemFont(ofSize: 9)])
+                runBtn.setContentHuggingPriority(.required, for: .horizontal)
+                let spacer = NSView()
+                spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+                let row = NSStackView(views: [numLabel, dotLabel, nameLabel, infoLabel, spacer, editBtn, runBtn])
+                row.orientation = .horizontal
+                row.spacing = 5
+                row.alignment = .centerY
+                return row
+            }
         }
     }
 
@@ -735,18 +775,6 @@ final class LocalChatView: NSView {
                     self.tasksTextView.string = "noskill daemon not running on :8787.\nStart: sched serve --port 8787"
                     return
                 }
-                var lines: [String] = ["noskill scheduled tasks (max 50):", ""]
-                for (i, t) in tasks.enumerated() {
-                    let name = t["name"] as? String ?? "?"
-                    let sched = t["schedule"] as? String ?? "?"
-                    let enabled = t["enabled"] as? Bool ?? false
-                    let status = t["status"] as? String ?? "?"
-                    let next = t["next_run"] as? String ?? "?"
-                    lines.append(String(format: "%2d  %@ %@", i+1, enabled ? "●" : "○", name))
-                    lines.append("   schedule: \(sched)  status: \(status)")
-                    lines.append("   next run: \(next)")
-                    lines.append("")
-                }
                 self.currentTasks = tasks
                 self.buildTaskRows(tasks: tasks)
                 self.taskFilterPicker.removeAllItems()
@@ -756,7 +784,6 @@ final class LocalChatView: NSView {
                     self.taskFilterPicker.addItem(withTitle: t["name"] as? String ?? "?")
                 }
                 self.taskFilterPicker.selectItem(at: 0)
-                self.tasksTextView.string = lines.joined(separator: "\n")
             }
         }.resume()
     }
