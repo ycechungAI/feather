@@ -548,13 +548,13 @@ final class LocalChatView: NSView {
             row.orientation = .horizontal
             row.spacing = 6
             row.alignment = .centerY
-            let label = NSTextField(labelWithString: String(format: "%2d  %@ %@", i+1, enabled ? "●" : "○", name))
+            let sched = t["schedule"] as? String ?? "?"
+            let status = t["status"] as? String ?? "?"
+            let next = t["next_run"] as? String ?? "?"
+            let label = NSTextField(labelWithString: String(format: "%2d  %@ %@   %@ · %@ · %@", i+1, enabled ? "●" : "○", name, sched, status, next))
             label.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
             label.textColor = NSColor(calibratedRed: 0.2, green: 1.0, blue: 0.2, alpha: 1.0)
             label.lineBreakMode = .byTruncatingTail
-            let statusLabel = NSTextField(labelWithString: status)
-            statusLabel.font = .systemFont(ofSize: 9)
-            statusLabel.textColor = .secondaryLabelColor
             let editBtn = NSButton(title: "Edit", target: self, action: #selector(editTaskByIndex(_:)))
             editBtn.bezelStyle = .recessed
             editBtn.controlSize = .mini
@@ -566,7 +566,6 @@ final class LocalChatView: NSView {
             runBtn.tag = i
             runBtn.setContentHuggingPriority(.required, for: .horizontal)
             label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-            statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             row.addArrangedSubview(label)
             row.addArrangedSubview(NSView()) // spacer
             row.addArrangedSubview(editBtn)
