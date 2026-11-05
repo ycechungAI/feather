@@ -1487,22 +1487,45 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
 
     /// Ask ▸ Ask Local Model (⌃⌘A): the local model answers about the page. Local only; see docs/AGENTIC.md.
     @objc func askLocalModel(_ sender: Any?) {
-        guard let webView, let window else { return }
+        let log = { (m: String) in
+            if let d = (m + "\n").data(using: .utf8) {
+                if let h = try? FileHandle(forWritingTo: URL(fileURLWithPath: "/tmp/feathera_debug.log")) { h.seekToEndOfFile(); h.write(d); h.closeFile() }
+                else { try? (m + "\n").write(to: URL(fileURLWithPath: "/tmp/feathera_debug.log"), atomically: true, encoding: .utf8) }
+            }
+        }
+        log("askLocalModel called; webView=\(webView != nil) window=\(window != nil) askPanelHidden=\(askPanel.isHidden)")
+        guard let window else { return }
         if !askPanel.isHidden {
             hideAskPanel()
             return
         }
-        webView.evaluateJavaScript("document.body ? document.body.innerText : ''") { result, _ in
-            let pageText = result as? String ?? ""
-            Task { @MainActor in
-                if let controller = BrowserWindowController.all.first(where: { $0 === self }) {
-                    controller.showAskPanel(pageText: pageText)
+        let webView = self.webView
+        let pageText: String
+        if let wv = webView {
+            // synchronous-ish: evaluate async
+            wv.evaluateJavaScript("document.body ? document.body.innerText : ''") { result, _ in
+                let pt = result as? String ?? ""
+                Task { @MainActor in
+                    if let controller = BrowserWindowController.all.first(where: { $0 === self }) {
+                        controller.showAskPanel(pageText: pt)
+                    }
                 }
             }
+            return
+        } else {
+            pageText = ""
         }
+        showAskPanel(pageText: pageText)
     }
 
     func showAskPanel(pageText: String) {
+        let log = { (m: String) in
+            if let d = (m + "\n").data(using: .utf8) {
+                if let h = try? FileHandle(forWritingTo: URL(fileURLWithPath: "/tmp/feathera_debug.log")) { h.seekToEndOfFile(); h.write(d); h.closeFile() }
+                else { try? (m + "\n").write(to: URL(fileURLWithPath: "/tmp/feathera_debug.log"), atomically: true, encoding: .utf8) }
+            }
+        }
+        log("showAskPanel pageTextLen=\(pageText.count) position=\(Settings.askPanelPosition)")
         askPanel.configure(pageText: pageText)
         NSLayoutConstraint.deactivate(webAreaConstraints + askPanelConstraints)
         askPanelConstraints.removeAll()
