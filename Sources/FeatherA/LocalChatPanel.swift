@@ -241,7 +241,7 @@ final class LocalChatView: NSView {
         taskRowsStack.alignment = .leading
         tasksContentStack.translatesAutoresizingMaskIntoConstraints = false
         tasksContentStack.orientation = .vertical
-        tasksContentStack.spacing = 4
+        tasksContentStack.spacing = 0
         tasksContentStack.alignment = .leading
         taskBottomBar.translatesAutoresizingMaskIntoConstraints = false
         taskBottomBar.orientation = .horizontal
@@ -293,7 +293,7 @@ final class LocalChatView: NSView {
         if let container = resultsTextView.textContainer {
             container.widthTracksTextView = true
         }
-        resultsTextView.string = "Select a task to view results."
+        resultsTextView.string = ""
         taskPicker.translatesAutoresizingMaskIntoConstraints = false
         taskPicker.target = self
         taskPicker.action = #selector(taskPicked(_:))
@@ -615,14 +615,7 @@ final class LocalChatView: NSView {
                 st.alignment = .leading
                 return st
             }
-            // pad to at least ncols*2 tasks
-            var padded = tasks
-            while padded.count < ncols * 2 { padded.append([:]) }
-            for (i, t) in padded.enumerated() {
-                if t.isEmpty {
-                    cols[i % ncols].addArrangedSubview(NSView())
-                    continue
-                }
+            for (i, t) in tasks.enumerated() {
                 cols[i % ncols].addArrangedSubview(makeRow(i, t))
             }
             let container = NSStackView(views: cols)
