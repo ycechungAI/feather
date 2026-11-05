@@ -569,7 +569,6 @@ final class LocalChatView: NSView {
             statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             row.addArrangedSubview(label)
             row.addArrangedSubview(NSView()) // spacer
-            row.addArrangedSubview(statusLabel)
             row.addArrangedSubview(editBtn)
             row.addArrangedSubview(runBtn)
             taskRowsStack.addArrangedSubview(row)
