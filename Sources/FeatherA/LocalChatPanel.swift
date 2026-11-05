@@ -1000,12 +1000,20 @@ final class LocalChatView: NSView {
         updateTaskPageControls(totalPages: max(1, Int(ceil(Double(currentTasks.count) / Double(tasksPerPage)))))
 
         if panelPosition == "bottom" {
-            // single row with all buttons; < page# > beside Restore
-            let h = NSStackView(views: buttons + [taskPageBar])
+            // top: all action buttons
+            let h = NSStackView(views: buttons)
             h.orientation = .horizontal
             h.spacing = 4
             h.alignment = .centerY
             taskButtonBar.addArrangedSubview(h)
+            // bottom: centered page nav
+            let leftSpacer = NSView()
+            leftSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            let rightSpacer = NSView()
+            rightSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            taskBottomBar.addArrangedSubview(leftSpacer)
+            taskBottomBar.addArrangedSubview(taskPageBar)
+            taskBottomBar.addArrangedSubview(rightSpacer)
             taskBottomBar.isHidden = false
         } else {
             // top: action buttons (single row, compact)
