@@ -21,6 +21,7 @@ final class LocalChatView: NSView {
     private let tasksScrollView = NSScrollView()
     private let tasksTextView = NSTextView()
     private let taskRowsStack = NSStackView()
+    private let tasksContentStack = NSStackView()
     private let resultsContainer = NSView()
     private let resultsScrollView = NSScrollView()
     private let resultsTextView = NSTextView()
@@ -194,7 +195,9 @@ final class LocalChatView: NSView {
         tasksScrollView.hasVerticalScroller = true
         tasksScrollView.scrollerStyle = .legacy
         tasksScrollView.borderType = .bezelBorder
-        tasksScrollView.documentView = tasksTextView
+        tasksContentStack.addArrangedSubview(taskRowsStack)
+        tasksContentStack.addArrangedSubview(tasksTextView)
+        tasksScrollView.documentView = tasksContentStack
         tasksTextView.frame = NSRect(x: 0, y: 0, width: 400, height: 200)
         tasksTextView.autoresizingMask = [.width]
         tasksTextView.isEditable = false
@@ -207,7 +210,6 @@ final class LocalChatView: NSView {
         if let container = tasksTextView.textContainer {
             container.widthTracksTextView = true
         }
-        tasksContainer.addSubview(taskRowsStack)
         tasksContainer.addSubview(tasksScrollView)
         tasksContainer.addSubview(taskButtonBar)
         tasksContainer.addSubview(taskBottomBar)
@@ -220,6 +222,10 @@ final class LocalChatView: NSView {
         taskRowsStack.orientation = .vertical
         taskRowsStack.spacing = 2
         taskRowsStack.alignment = .leading
+        tasksContentStack.translatesAutoresizingMaskIntoConstraints = false
+        tasksContentStack.orientation = .vertical
+        tasksContentStack.spacing = 4
+        tasksContentStack.alignment = .leading
         taskBottomBar.translatesAutoresizingMaskIntoConstraints = false
         taskBottomBar.orientation = .horizontal
         taskBottomBar.spacing = 6
@@ -236,16 +242,14 @@ final class LocalChatView: NSView {
             taskFilterPicker.leadingAnchor.constraint(equalTo: tasksContainer.leadingAnchor, constant: 8),
             taskFilterPicker.widthAnchor.constraint(equalTo: tasksContainer.widthAnchor, multiplier: 0.5, constant: -12),
             taskFilterPicker.heightAnchor.constraint(equalToConstant: 22),
-            taskRowsStack.topAnchor.constraint(equalTo: taskFilterPicker.bottomAnchor, constant: 4),
-            taskRowsStack.leadingAnchor.constraint(equalTo: tasksContainer.leadingAnchor, constant: 8),
-            taskRowsStack.trailingAnchor.constraint(equalTo: tasksContainer.trailingAnchor, constant: -8),
-            taskButtonBar.topAnchor.constraint(equalTo: taskRowsStack.bottomAnchor, constant: 4),
+            taskButtonBar.topAnchor.constraint(equalTo: taskFilterPicker.bottomAnchor, constant: 4),
             taskButtonBar.leadingAnchor.constraint(equalTo: tasksContainer.leadingAnchor, constant: 8),
             taskButtonBar.trailingAnchor.constraint(equalTo: tasksContainer.trailingAnchor, constant: -8),
             tasksScrollView.topAnchor.constraint(equalTo: taskButtonBar.bottomAnchor, constant: 4),
             tasksScrollView.leadingAnchor.constraint(equalTo: tasksContainer.leadingAnchor),
             tasksScrollView.trailingAnchor.constraint(equalTo: tasksContainer.trailingAnchor),
             tasksScrollView.bottomAnchor.constraint(equalTo: taskBottomBar.topAnchor, constant: -4),
+            tasksContentStack.widthAnchor.constraint(equalTo: tasksScrollView.widthAnchor),
             taskBottomBar.leadingAnchor.constraint(equalTo: tasksContainer.leadingAnchor, constant: 8),
             taskBottomBar.trailingAnchor.constraint(equalTo: tasksContainer.trailingAnchor, constant: -8),
             taskBottomBar.bottomAnchor.constraint(equalTo: tasksContainer.bottomAnchor, constant: -4),
@@ -541,7 +545,6 @@ final class LocalChatView: NSView {
         for v in taskRowsStack.arrangedSubviews { taskRowsStack.removeArrangedSubview(v); v.removeFromSuperview() }
         for (i, t) in tasks.enumerated() {
             let name = t["name"] as? String ?? "?"
-            let status = t["status"] as? String ?? "?"
             let enabled = t["enabled"] as? Bool ?? false
             let taskId = t["id"] as? String ?? ""
             let row = NSStackView()
@@ -829,17 +832,10 @@ final class LocalChatView: NSView {
         for v in taskButtonBar.arrangedSubviews { taskButtonBar.removeArrangedSubview(v); v.removeFromSuperview() }
         for v in taskBottomBar.arrangedSubviews { taskBottomBar.removeArrangedSubview(v); v.removeFromSuperview() }
         taskButtons.removeAll()
-        let topDefs: [(String?, String?, Selector)] = [("Add tasks", nil, #selector(newTaskClicked(_:))),
-                                         ("Delete", nil, #selector(deleteTaskClicked(_:))),
-                                         ("Run", nil, #selector(runTaskClicked(_:))),
-                                         ("Run All", nil, #selector(runAllTasksClicked(_:))),
-                                         (nil, "arrow.clockwise", #selector(refreshTasksClicked(_:)))]
-        let bottomDefs: [(String?, Selector)] = [("Save", #selector(saveTasksClicked(_:))),
-                                                 ("Restore", #selector(restoreTasksClicked(_:)))]
-        let topButtons = topDefs.map { (title, symbol, action) -> NSButton in
+        let makeBtn = { (title: String?, symbol: String?, action: Selector) -> NSButton in
             let b: NSButton
             if let symbol = symbol {
-                let img = NSImage(systemSymbolName: symbol, accessibilityDescription: "Refresh")
+                let img = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
                 b = NSButton(image: img ?? NSImage(), target: self, action: action)
             } else {
                 b = NSButton(title: title ?? "", target: self, action: action)
@@ -848,36 +844,40 @@ final class LocalChatView: NSView {
             b.controlSize = .mini
             return b
         }
-        taskButtons = topButtons
-        let perRow: Int = 6
-        var row: [NSButton] = []
-        var rows: [[NSButton]] = []
-        for b in topButtons {
-            row.append(b)
-            if row.count >= perRow { rows.append(row); row = [] }
-        }
-        if !row.isEmpty { rows.append(row) }
-        for r in rows {
-            let h = NSStackView(views: r)
+        let defs: [(String?, String?, Selector)] = [("Add tasks", nil, #selector(newTaskClicked(_:))),
+                                         ("Delete", nil, #selector(deleteTaskClicked(_:))),
+                                         ("Run", nil, #selector(runTaskClicked(_:))),
+                                         ("Run All", nil, #selector(runAllTasksClicked(_:))),
+                                         (nil, "arrow.clockwise", #selector(refreshTasksClicked(_:))),
+                                         ("Save", nil, #selector(saveTasksClicked(_:))),
+                                         ("Restore", nil, #selector(restoreTasksClicked(_:)))]
+        let buttons = defs.map { makeBtn($0.0, $0.1, $0.2) }
+        taskButtons = buttons
+
+        if panelPosition == "bottom" {
+            // single row with all buttons
+            let h = NSStackView(views: buttons)
             h.orientation = .horizontal
             h.spacing = 4
             h.alignment = .centerY
             taskButtonBar.addArrangedSubview(h)
-        }
-        for (title, action) in bottomDefs {
-            let b = NSButton(title: title ?? "", target: self, action: action)
-            b.bezelStyle = .recessed
-            b.controlSize = .mini
-            taskBottomBar.addArrangedSubview(b)
+            // hide bottom bar
+            taskBottomBar.isHidden = true
+        } else {
+            // top: action buttons (single row, compact)
+            let topBtns = Array(buttons.prefix(5))
+            let h = NSStackView(views: topBtns)
+            h.orientation = .horizontal
+            h.spacing = 4
+            h.alignment = .centerY
+            taskButtonBar.addArrangedSubview(h)
+            // bottom: Save + Restore
+            for b in buttons.suffix(2) {
+                taskBottomBar.addArrangedSubview(b)
+            }
+            taskBottomBar.isHidden = false
         }
         lastButtonWidth = self.bounds.width
-    }
-
-    override func layout() {
-        super.layout()
-        if abs(bounds.width - lastButtonWidth) > 40 {
-            setupTaskButtons()
-        }
     }
 
     @objc private func taskPicked(_ sender: NSPopUpButton) {
@@ -1067,6 +1067,7 @@ final class LocalChatView: NSView {
             window.endSheet(sheet)
         }
     }
+
 
     private func answer(question: String) async {
         appendLog("Question: \(question)")
