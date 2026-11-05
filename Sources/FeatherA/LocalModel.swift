@@ -69,7 +69,7 @@ enum LocalModelError: Error, Equatable, LocalizedError {
 struct LocalModel {
     let config: ServicesConfig
 
-    static let instructions = "You answer questions about a web page the user is reading. Use only the page text. If the answer isn't in the text, say so."
+    static let instructions = "You answer questions about a web page the user is reading. Use only the page text. If the answer isn't in the text, say so. When summarizing a list or feed page, give each item its own short sentence."
 
     func chatRequest(question: String, pageText: String) throws -> URLRequest {
         guard let base = URL(string: config.ollama), Self.isLocal(base) else {
