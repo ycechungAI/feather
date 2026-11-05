@@ -27,7 +27,8 @@ final class LocalChatView: NSView {
         chatScrollView.hasHorizontalScroller = false
         chatScrollView.documentView = chatTextView
         chatScrollView.borderType = .bezelBorder
-
+        chatTextView.frame = NSRect(x: 0, y: 0, width: 400, height: 200)
+        chatTextView.autoresizingMask = [.width]
         chatTextView.translatesAutoresizingMaskIntoConstraints = false
         chatTextView.isEditable = false
         chatTextView.isSelectable = true
@@ -36,7 +37,6 @@ final class LocalChatView: NSView {
         chatTextView.textColor = NSColor(calibratedRed: 0.2, green: 1.0, blue: 0.2, alpha: 1.0)
         chatTextView.font = .systemFont(ofSize: 13)
         chatTextView.isVerticallyResizable = true
-        chatTextView.autoresizingMask = [.width]
         if let container = chatTextView.textContainer {
             container.widthTracksTextView = true
         }
@@ -163,7 +163,6 @@ final class LocalChatView: NSView {
     private func render() {
         let text = history.isEmpty ? "Ask a question about this page." : history.joined(separator: "\n\n")
         chatTextView.string = text
-        chatTextView.sizeToFit()
         if Settings.saveChatHistory {
             Self.saveHistory(history)
         }
