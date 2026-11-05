@@ -98,9 +98,13 @@ final class LocalChatView: NSView {
         guard !question.isEmpty else { return }
         inputField.stringValue = ""
         history.append("You: \(question)")
+        history.append("Feather: Thinking...")
         render()
         Task { @MainActor in
+            // remove the thinking placeholder then answer
+            if let idx = history.lastIndex(of: "Feather: Thinking...") { history.remove(at: idx) }
             await self.answer(question: question)
+            self.render()
         }
     }
 
@@ -142,6 +146,11 @@ final class LocalChatView: NSView {
         if Settings.saveChatHistory {
             Self.saveHistory(history)
         }
+        // scroll to bottom
+        let clip = chatScrollView.contentView
+        let maxY = max(0, chatTextView.frame.height - clip.bounds.height)
+        clip.scroll(to: NSPoint(x: 0, y: maxY))
+        chatScrollView.reflectScrolledClipView(clip)
     }
 
     private func answer(question: String) async {
