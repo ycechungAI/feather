@@ -222,10 +222,12 @@ final class LocalChatView: NSView {
         taskFilterPicker.target = self
         taskFilterPicker.action = #selector(taskFilterChanged(_:))
         taskFilterPicker.font = .systemFont(ofSize: 10)
+        taskFilterPicker.appearance = NSAppearance(named: .darkAqua)
         modelPicker.translatesAutoresizingMaskIntoConstraints = false
         modelPicker.target = self
         modelPicker.action = #selector(modelPicked(_:))
         modelPicker.font = .systemFont(ofSize: 10)
+        modelPicker.appearance = NSAppearance(named: .darkAqua)
         // buttons created in setupTaskButtons() called from configure
         NSLayoutConstraint.activate([
             taskFilterPicker.topAnchor.constraint(equalTo: tasksContainer.topAnchor, constant: 4),
@@ -275,10 +277,12 @@ final class LocalChatView: NSView {
         taskPicker.target = self
         taskPicker.action = #selector(taskPicked(_:))
         taskPicker.font = .systemFont(ofSize: 10)
+        taskPicker.appearance = NSAppearance(named: .darkAqua)
         runPicker.translatesAutoresizingMaskIntoConstraints = false
         runPicker.target = self
         runPicker.action = #selector(runPicked(_:))
         runPicker.font = .systemFont(ofSize: 10)
+        runPicker.appearance = NSAppearance(named: .darkAqua)
         resultsContainer.addSubview(taskPicker)
         resultsContainer.addSubview(runPicker)
         resultsContainer.addSubview(resultsScrollView)
