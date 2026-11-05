@@ -28,6 +28,9 @@ final class LocalChatView: NSView {
     private var currentRuns: [[String: Any]] = []
     private let taskButtonBar = NSStackView()
     private let taskBottomBar = NSStackView()
+    private let modelPicker = NSPopUpButton()
+    private var availableModels: [String] = []
+    private var selectedRunModel: String? = nil
     private var taskButtons: [NSButton] = []
     private var currentTasks: [[String: Any]] = []
     private let chatScrollView = NSScrollView()
@@ -200,6 +203,7 @@ final class LocalChatView: NSView {
         }
         tasksContainer.addSubview(tasksScrollView)
         tasksContainer.addSubview(taskButtonBar)
+        tasksContainer.addSubview(modelPicker)
         tasksContainer.addSubview(taskBottomBar)
         taskButtonBar.translatesAutoresizingMaskIntoConstraints = false
         taskButtonBar.orientation = .vertical
@@ -209,6 +213,9 @@ final class LocalChatView: NSView {
         taskBottomBar.orientation = .horizontal
         taskBottomBar.spacing = 6
         taskBottomBar.alignment = .centerY
+        modelPicker.translatesAutoresizingMaskIntoConstraints = false
+        modelPicker.target = self
+        modelPicker.action = #selector(modelPicked(_:))
         // buttons created in setupTaskButtons() called from configure
         NSLayoutConstraint.activate([
             taskButtonBar.topAnchor.constraint(equalTo: tasksContainer.topAnchor, constant: 4),
@@ -217,7 +224,11 @@ final class LocalChatView: NSView {
             tasksScrollView.topAnchor.constraint(equalTo: taskButtonBar.bottomAnchor, constant: 4),
             tasksScrollView.leadingAnchor.constraint(equalTo: tasksContainer.leadingAnchor),
             tasksScrollView.trailingAnchor.constraint(equalTo: tasksContainer.trailingAnchor),
-            tasksScrollView.bottomAnchor.constraint(equalTo: taskBottomBar.topAnchor, constant: -4),
+            tasksScrollView.bottomAnchor.constraint(equalTo: modelPicker.topAnchor, constant: -4),
+            modelPicker.leadingAnchor.constraint(equalTo: tasksContainer.leadingAnchor, constant: 8),
+            modelPicker.trailingAnchor.constraint(equalTo: tasksContainer.trailingAnchor, constant: -8),
+            modelPicker.heightAnchor.constraint(equalToConstant: 24),
+            taskBottomBar.topAnchor.constraint(equalTo: modelPicker.bottomAnchor, constant: 4),
             taskBottomBar.leadingAnchor.constraint(equalTo: tasksContainer.leadingAnchor, constant: 8),
             taskBottomBar.trailingAnchor.constraint(equalTo: tasksContainer.trailingAnchor, constant: -8),
             taskBottomBar.bottomAnchor.constraint(equalTo: tasksContainer.bottomAnchor, constant: -4),
@@ -476,6 +487,7 @@ final class LocalChatView: NSView {
                 }
                 self.currentTasks = tasks
                 self.tasksTextView.string = lines.joined(separator: "\n")
+                self.fetchModels()
             }
         }.resume()
     }
@@ -549,6 +561,24 @@ final class LocalChatView: NSView {
                   n >= 1, n <= self.currentTasks.count, n <= 50 else { return }
             let task = self.currentTasks[n-1]
             guard let taskId = task["id"] as? String else { return }
+            guard let filename = task["filename"] as? String else { return }
+            // apply selected model to task file if changed
+            if let model = self.selectedRunModel {
+                self.updateTaskModel(filename: filename, model: model) {
+                    guard let url = URL(string: "http://127.0.0.1:8787/api/tasks/\(taskId)/run") else { return }
+                    var req = URLRequest(url: url)
+                    req.httpMethod = "POST"
+                    URLSession.shared.dataTask(with: req) { _, _, _ in
+                        DispatchQueue.main.async {
+                            self.fetchTasks()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
+                                self.fetchLatestResult(taskId: taskId)
+                            }
+                        }
+                    }.resume()
+                }
+                return
+            }
             guard let url = URL(string: "http://127.0.0.1:8787/api/tasks/\(taskId)/run") else { return }
             var req = URLRequest(url: url)
             req.httpMethod = "POST"
@@ -694,6 +724,60 @@ final class LocalChatView: NSView {
                 self?.resultsTextView.string = text
                 self?.logsTextView.string += "\n=== Task Result ===\n" + text + "\n"
             }
+        }.resume()
+    }
+
+    private func fetchModels() {
+        guard let url = URL(string: "http://127.0.0.1:11434/api/tags") else { return }
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+            guard let data, let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let models = obj["models"] as? [[String: Any]] else { return }
+            let names = models.compactMap { $0["name"] as? String }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.availableModels = names
+                self.modelPicker.removeAllItems()
+                self.modelPicker.addItems(withTitles: names)
+                if let sel = self.selectedRunModel, let idx = names.firstIndex(of: sel) {
+                    self.modelPicker.selectItem(at: idx)
+                } else if !names.isEmpty {
+                    self.modelPicker.selectItem(at: 0)
+                    self.selectedRunModel = names.first
+                }
+            }
+        }.resume()
+    }
+
+    @objc private func modelPicked(_ sender: NSPopUpButton) {
+        selectedRunModel = sender.titleOfSelectedItem
+    }
+
+    private func updateTaskModel(filename: String, model: String, completion: @escaping () -> Void) {
+        guard let url = URL(string: "http://127.0.0.1:8787/api/tasks/file/\(filename)") else { completion(); return }
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+            guard let data, let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let content = obj["content"] as? String else { completion(); return }
+            // replace model line in frontmatter
+            var newContent = content
+            if let range = newContent.range(of: "model:", options: .caseInsensitive) {
+                // find end of line
+                let lineStart = newContent[..<range.lowerBound].lastIndex(of: "\n") ?? newContent.startIndex
+                let lineEnd = newContent[range.upperBound...].firstIndex(of: "\n") ?? newContent.endIndex
+                newContent.replaceSubrange(lineStart...lineEnd, with: "\nmodel: \"\(model)\"")
+            } else {
+                // insert model after first ---
+                if let r = newContent.range(of: "---\n") {
+                    newContent.insert(contentsOf: "model: \"\(model)\"\n", at: r.upperBound)
+                }
+            }
+            guard let createURL = URL(string: "http://127.0.0.1:8787/api/tasks/file/\(filename)") else { completion(); return }
+            var req = URLRequest(url: createURL)
+            req.httpMethod = "PUT"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = try? JSONSerialization.data(withJSONObject: ["content": newContent])
+            URLSession.shared.dataTask(with: req) { _, _, _ in
+                DispatchQueue.main.async { completion() }
+            }.resume()
         }.resume()
     }
 
