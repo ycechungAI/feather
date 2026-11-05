@@ -144,12 +144,22 @@ final class LocalChatView: NSView {
     }
 
     private func render() {
-        let text = history.isEmpty ? "Ask a question about this page." : history.joined(separator: "\n\n")
-        chatTextView.string = text
+        let turquoise = NSColor(calibratedRed: 0.1, green: 0.8, blue: 0.8, alpha: 1.0)
+        let white = NSColor.white
+        let attr = NSMutableAttributedString()
+        if history.isEmpty {
+            attr.append(NSAttributedString(string: "Ask a question about this page.", attributes: [.foregroundColor: NSColor.gray]))
+        } else {
+            for (i, entry) in history.enumerated() {
+                if i > 0 { attr.append(NSAttributedString(string: "\n\n")) }
+                let color: NSColor = entry.hasPrefix("Feather:") ? turquoise : white
+                attr.append(NSAttributedString(string: entry, attributes: [.foregroundColor: color, .font: NSFont.systemFont(ofSize: 13)]))
+            }
+        }
+        chatTextView.textStorage?.setAttributedString(attr)
         if Settings.saveChatHistory {
             Self.saveHistory(history)
         }
-        // scroll to bottom
         let clip = chatScrollView.contentView
         let maxY = max(0, chatTextView.frame.height - clip.bounds.height)
         clip.scroll(to: NSPoint(x: 0, y: maxY))
