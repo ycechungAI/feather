@@ -11,7 +11,7 @@ final class LocalChatView: NSView {
     // Header sub-panel
     private let headerView = NSView()
     private let iconView = NSImageView()
-    private let nameLabel = NSTextField(labelWithString: "Feather AI")
+    private let nameLabel = NSTextField(labelWithString: "AI")
     private let tabControl = NSSegmentedControl()
 
     // Chat
