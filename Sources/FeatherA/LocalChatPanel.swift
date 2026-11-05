@@ -230,7 +230,7 @@ final class LocalChatView: NSView {
         tasksContainer.addSubview(tasksScrollView)
         tasksContainer.addSubview(taskButtonBar)
         tasksContainer.addSubview(taskBottomBar)
-        tasksContainer.addSubview(taskFilterPicker)
+        taskBottomBar.addArrangedSubview(taskFilterPicker)
         taskButtonBar.translatesAutoresizingMaskIntoConstraints = false
         taskButtonBar.orientation = .vertical
         taskButtonBar.spacing = 4
@@ -255,11 +255,7 @@ final class LocalChatView: NSView {
         taskFilterPicker.menu?.appearance = NSAppearance(named: .darkAqua)
         // buttons created in setupTaskButtons() called from configure
         NSLayoutConstraint.activate([
-            taskFilterPicker.topAnchor.constraint(equalTo: tasksContainer.topAnchor, constant: 0),
-            taskFilterPicker.leadingAnchor.constraint(equalTo: tasksContainer.leadingAnchor, constant: 8),
-            taskFilterPicker.widthAnchor.constraint(equalTo: tasksContainer.widthAnchor, multiplier: 0.5, constant: -12),
-            taskFilterPicker.heightAnchor.constraint(equalToConstant: 22),
-            taskButtonBar.topAnchor.constraint(equalTo: taskFilterPicker.bottomAnchor, constant: 2),
+            taskButtonBar.topAnchor.constraint(equalTo: tasksContainer.topAnchor, constant: 2),
             taskButtonBar.leadingAnchor.constraint(equalTo: tasksContainer.leadingAnchor, constant: 8),
             taskButtonBar.trailingAnchor.constraint(equalTo: tasksContainer.trailingAnchor, constant: -8),
             tasksScrollView.topAnchor.constraint(equalTo: taskButtonBar.bottomAnchor, constant: 2),
