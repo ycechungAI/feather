@@ -523,8 +523,10 @@ final class LocalChatView: NSView {
         agentsMode.toggle()
         if agentsMode {
             startBasicScheduler()
-            tabControl.selectedSegment = 1
-            tabChanged(tabControl)
+            if let idx = tabLabels.firstIndex(of: "Agents") ?? tabLabels.firstIndex(of: "Tasks") {
+                tabControl.selectedSegment = idx
+                tabChanged(tabControl)
+            }
         } else {
             stopBasicScheduler()
         }
