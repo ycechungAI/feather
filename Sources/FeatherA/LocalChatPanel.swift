@@ -295,6 +295,7 @@ final class LocalChatView: NSView {
             resultsScrollView.leadingAnchor.constraint(equalTo: resultsContainer.leadingAnchor),
             resultsScrollView.trailingAnchor.constraint(equalTo: resultsContainer.trailingAnchor),
             resultsScrollView.bottomAnchor.constraint(equalTo: resultsContainer.bottomAnchor),
+            resultsScrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 120),
         ])
 
         // Assemble
@@ -794,19 +795,23 @@ final class LocalChatView: NSView {
     }
 
     private func pollResult(taskId: String, attempts: Int) {
-        guard attempts < 60 else { return }
+        guard attempts < 120 else { return }
         guard let url = URL(string: "http://127.0.0.1:8787/api/tasks/\(taskId)/runs") else { return }
         URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
             guard let data, let runs = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
                   let latest = runs.first else { return }
             let status = latest["status"] as? String ?? "running"
-            if status == "running" {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                    self?.pollResult(taskId: taskId, attempts: attempts + 1)
-                }
-            } else {
-                DispatchQueue.main.async {
-                    self?.fetchLatestResult(taskId: taskId)
+            let runId = latest["id"] as? Int
+            DispatchQueue.main.async {
+                guard let self else { return }
+                // show partial result while running
+                if let rid = runId { self.loadResult(runId: rid) }
+                if status == "running" {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                        self.pollResult(taskId: taskId, attempts: attempts + 1)
+                    }
+                } else {
+                    self.fetchLatestResult(taskId: taskId)
                 }
             }
         }.resume()
