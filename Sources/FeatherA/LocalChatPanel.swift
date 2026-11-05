@@ -272,6 +272,7 @@ final class LocalChatView: NSView {
             taskButtonBar.topAnchor.constraint(equalTo: tasksContainer.topAnchor, constant: 2),
             taskButtonBar.leadingAnchor.constraint(equalTo: tasksContainer.leadingAnchor, constant: 8),
             taskButtonBar.trailingAnchor.constraint(equalTo: tasksContainer.trailingAnchor, constant: -8),
+            taskButtonBar.heightAnchor.constraint(equalToConstant: 20),
             tasksScrollView.topAnchor.constraint(equalTo: taskButtonBar.bottomAnchor, constant: 2),
             tasksScrollView.leadingAnchor.constraint(equalTo: tasksContainer.leadingAnchor),
             tasksScrollView.trailingAnchor.constraint(equalTo: tasksContainer.trailingAnchor),
