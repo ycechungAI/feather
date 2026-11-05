@@ -36,6 +36,7 @@ final class LocalChatView: NSView {
     private var panStartLocation: CGFloat = 0
     var panelPosition: String = "right"
     private var handleConstraints: [NSLayoutConstraint] = []
+    private var lastButtonWidth: CGFloat = 0
     private let logsScrollView = NSScrollView()
     private let logsTextView = NSTextView()
 
@@ -530,7 +531,6 @@ final class LocalChatView: NSView {
     }
 
     private func setupTaskButtons() {
-        // clear
         for v in taskButtonBar.arrangedSubviews { taskButtonBar.removeArrangedSubview(v); v.removeFromSuperview() }
         taskButtons.removeAll()
         let defs: [(String?, String?, Selector)] = [("Add tasks", nil, #selector(newTaskClicked(_:))),
@@ -552,29 +552,32 @@ final class LocalChatView: NSView {
             return b
         }
         taskButtons = buttons
-        let narrow = (panelPosition == "left" || panelPosition == "right")
-        if narrow {
-            // 2-3 buttons per row, 2-3 rows
-            var row: [NSButton] = []
-            var rows: [[NSButton]] = []
-            for b in buttons {
-                row.append(b)
-                if row.count >= 3 { rows.append(row); row = [] }
-            }
-            if !row.isEmpty { rows.append(row) }
-            for r in rows {
-                let h = NSStackView(views: r)
-                h.orientation = .horizontal
-                h.spacing = 4
-                h.alignment = .centerY
-                taskButtonBar.addArrangedSubview(h)
-            }
-        } else {
-            let h = NSStackView(views: buttons)
+        let width = self.bounds.width > 0 ? self.bounds.width : 320
+        let perRow: Int
+        if width >= 700 { perRow = 6 }
+        else if width >= 360 { perRow = 3 }
+        else { perRow = 2 }
+        var row: [NSButton] = []
+        var rows: [[NSButton]] = []
+        for b in buttons {
+            row.append(b)
+            if row.count >= perRow { rows.append(row); row = [] }
+        }
+        if !row.isEmpty { rows.append(row) }
+        for r in rows {
+            let h = NSStackView(views: r)
             h.orientation = .horizontal
             h.spacing = 4
             h.alignment = .centerY
             taskButtonBar.addArrangedSubview(h)
+        }
+        lastButtonWidth = width
+    }
+
+    override func layout() {
+        super.layout()
+        if abs(bounds.width - lastButtonWidth) > 40 {
+            setupTaskButtons()
         }
     }
 
