@@ -1,6 +1,6 @@
 # Feather
 
-**Version 0.2.0** · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md)
+**Version 0.3.0** · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md)
 
 A tiny macOS browser (about 1 MB). Feather adds no rendering engine of its own: it uses the WebKit engine
 built into macOS (the same one Safari uses), so it gets web-standards and security updates through
