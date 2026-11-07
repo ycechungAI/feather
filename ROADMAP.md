@@ -40,6 +40,7 @@ All eight are built and covered by automated tests. Numbers match the original t
 - **Extension auto-updates** from Firefox Add-ons.
 - **Signed, notarized download with update check (from #10):** installs without Gatekeeper warnings.
   Needs an Apple Developer account ($99/year).
+- Windows version called featherWIN is in development (similar but different)
 
 ---
 
