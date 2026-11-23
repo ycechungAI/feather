@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.2 (2026-11-23)
+Eco Memory Mode and WebKit memory/CPU overhead fixes (see [docs/RELEASE-0.2.2.md](docs/RELEASE-0.2.2.md) for full release notes).
+
+### Added
+- **Eco Memory Mode** toolbar button (leaf icon beside Home), **View ▸ Eco Memory Mode (⌥⌘E)**, and **Settings ▸ Eco Memory Mode**. Off by default (standard `v0.2.1` behavior). When turned on:
+  - **Auto-mobile guard (>500 MB):** Monitors every awake tab's `WebContent` physical memory footprint every 15 seconds; any webpage exceeding 500 MB automatically tears down its desktop process and switches to its mobile version (`m.<domain>` if available, otherwise Mobile Safari User-Agent).
+  - Switches YouTube (`/watch`, `/shorts`, `/live`, `youtu.be`) and Twitch (`twitch.tv/<channel>`, `/videos/<id>`) immediately to lightweight Mobile Web (`m.youtube.com` / `m.twitch.tv`), evicts played MSE video buffers older than 10 s, prunes heavy non-player DOM bloat, and resets `WebContent` between videos/channels to stop SPA memory leaks.
+  - Right-click the Eco button (or use **View ▸ Open Full Page (Bypass Eco)**) to open the desktop page for a single tab without turning Eco off globally; turning Eco off restores desktop pages automatically.
+  - Immediately sleeps idle background tabs, lowers background sleep to 30 seconds, trims WebKit's memory cache, tears down `WebContent` processes immediately via `_close`, and enables stricter WebKit media/scheduling preferences.
+- **Live memory pill on the tab strip:** Rounded status badge on the right edge of the tab strip showing the active tab's memory footprint (green / amber / red dot), with full browser stats on hover and click-to-trim.
+
+### Changed
+- **No unconditional per-frame video scripts:** `streamWatcher` (`PerformanceObserver`) is replaced with on-demand `performance.getEntriesByType('resource')` lookup when downloading video; `pipKeeper` is injected on demand when PiP is triggered.
+- **Host-scoped scripts:** YouTube ad-muting script only injects on `youtube.com`, and the add-on install script only injects on `addons.mozilla.org`.
+
+### Fixed
+- **Muted autoplaying videos kept background tabs awake forever:** silent `<video>` loops (e.g. CNN, Reddit, news sites) are now ignored by tab sleep unless in Picture in Picture.
+- **Closed tabs held `WebContent` processes longer than necessary:** `WKWebView` teardown now detaches delegates, removes scripts/handlers, and calls `_close`.
+- **Bookmarks bar `»` showed all bookmarks:** now hides when everything fits and lists only spilled-over items.
+- **Toolbar buttons overflowed on narrow windows:** shrunk address bar (`80–360 pt`) and raised visibility priority on Bookmark (☆), Downloads, Extensions, and Shields so they stay visible at any window size.
+- **Bookmark folder popup drag-out:** fixed `NSDragOperation` empty check in `FolderPopup.swift`.
+
 ## 0.2.0 (2026-11-01)
 The first public release.
 

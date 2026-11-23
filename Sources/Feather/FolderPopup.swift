@@ -33,7 +33,7 @@ final class FolderPopupPresenter {
     }
 
     private func installMonitors() {
-        monitors.append(NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .keyDown]) { [weak self] event in
+        if let monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .keyDown], handler: { [weak self] event in
             guard let self else { return event }
             if event.type == .keyDown {
                 if event.keyCode == 53 { self.closeAll() }
@@ -45,7 +45,9 @@ final class FolderPopupPresenter {
             }
             self.closeAll()
             return event
-        })
+        }) {
+            monitors.append(monitor)
+        }
     }
 
     var currentBookmarkBar: BookmarkBar? { bookmarkBar }
@@ -472,7 +474,7 @@ final class FolderRowView: NSView, NSDraggingSource {
 
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
         dragInProgress = false
-        if operation == .none, let window {
+        if operation.isEmpty, let window {
             if !window.frame.contains(screenPoint) {
                 presenter?.closeAll()
             }

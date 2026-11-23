@@ -1,6 +1,6 @@
 # Feather
 
-**Version 0.3.0** · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md)
+**Version 0.2.2** · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md)
 
 A tiny macOS browser (about 1 MB). Feather adds no rendering engine of its own: it uses the WebKit engine
 built into macOS (the same one Safari uses), so it gets web-standards and security updates through
@@ -153,7 +153,7 @@ The one exception is search suggestions, which are off unless you turn them on i
 It runs only when you open it. All source code is in `Sources/Feather`.
 
 ## Install
-Download `Feather-0.2.0.zip` from [Releases](https://github.com/ycechungAI/feather/releases), unzip it
+Download `Feather-0.2.2.zip` from [Releases](https://github.com/ycechungAI/feather/releases), unzip it
 and move `Feather.app` to Applications. Feather needs macOS 15.4 or later.
 
 Feather isn't notarized by Apple yet (planned for v0.4), so macOS blocks it the first time. To open it,
@@ -162,7 +162,7 @@ and click **Open Anyway**. You can also run:
 
     xattr -dr com.apple.quarantine /Applications/Feather.app
 
-You can check the download against `Feather-0.2.0.zip.sha256` on the release page.
+You can check the download against `Feather-0.2.2.zip.sha256` on the release page.
 
 ## Build & run
     scripts/build-app.sh              # creates build/Feather.app

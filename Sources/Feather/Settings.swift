@@ -58,7 +58,27 @@ enum Settings {
             "keepSignedIn": ["google.com", "gmail.com", "youtube.com"],
             "cacheLimitMB": 500,
             "webInspector": false,
+            "ecoMemory": false,
+            "ecoAllowlist": [String](),
         ])
+    }
+
+    /// Aggressively saves memory when on: mobile mode for heavy sites (>500 MB), fast background
+    /// tab sleep, stricter WebKit preferences, and memory-cache trimming. Off = standard 0.2.1.
+    static var ecoMemory: Bool {
+        get { d.bool(forKey: "ecoMemory") }
+        set { d.set(newValue, forKey: "ecoMemory") }
+    }
+
+    /// Sites excluded from Eco Mobile Mode (hosts; subdomains included, e.g. "twitch.tv").
+    static var ecoAllowlist: [String] {
+        get { d.stringArray(forKey: "ecoAllowlist") ?? [] }
+        set { d.set(Array(Set(newValue.map { $0.lowercased() })).sorted(), forKey: "ecoAllowlist") }
+    }
+
+    /// Whether Eco Mobile Mode should apply on pages from `host`.
+    static func ecoMobileActive(for host: String?) -> Bool {
+        ecoMemory && !Shields.isAllowlisted(host: host, in: ecoAllowlist)
     }
 
     static var shieldsEnabled: Bool {

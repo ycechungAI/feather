@@ -269,10 +269,10 @@ final class BookmarkBar: NSView {
         groupStack.setContentCompressionResistancePriority(.required, for: .horizontal)
         groupStack.setHuggingPriority(.required, for: .horizontal)
 
-        overflowButton.image = NSImage(systemSymbolName: "chevron.right.2", accessibilityDescription: "All Bookmarks")
+        overflowButton.image = NSImage(systemSymbolName: "chevron.right.2", accessibilityDescription: "More Bookmarks")
         overflowButton.bezelStyle = .recessed
         overflowButton.isBordered = false
-        overflowButton.toolTip = "All bookmarks"
+        overflowButton.toolTip = "More bookmarks"
         overflowButton.target = self
         overflowButton.action = #selector(showAll(_:))
         overflowButton.translatesAutoresizingMaskIntoConstraints = false
@@ -330,6 +330,24 @@ final class BookmarkBar: NSView {
         return IndexPath(indexes: indexes)
     }
 
+    override func layout() {
+        super.layout()
+        updateOverflowVisibility()
+    }
+
+    /// Indices of root bookmark-bar items that don't fully fit inside the visible clip area.
+    private func overflowIndices() -> [Int] {
+        let maxWidth = clip.bounds.width
+        guard maxWidth > 0 else { return [] }
+        return stack.arrangedSubviews.enumerated().compactMap { index, view in
+            view.frame.maxX > maxWidth + 1 ? index : nil
+        }
+    }
+
+    private func updateOverflowVisibility() {
+        overflowButton.isHidden = overflowIndices().isEmpty
+    }
+
     @objc private func reload() {
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         let items = Bookmarks.shared.items
@@ -337,7 +355,7 @@ final class BookmarkBar: NSView {
             stack.addArrangedSubview(button(for: node, path: IndexPath(index: index)))
         }
         emptyLabel.isHidden = !items.isEmpty
-        overflowButton.isHidden = items.isEmpty
+        needsLayout = true
     }
 
     @objc private func reloadGroups() {
@@ -359,6 +377,7 @@ final class BookmarkBar: NSView {
             groupStack.addArrangedSubview(chip)
         }
         groupGap.constant = groups.isEmpty ? 0 : 6
+        needsLayout = true
     }
 
     @objc private func groupClicked(_ sender: NSButton) {
@@ -769,8 +788,12 @@ final class BookmarkBar: NSView {
     }
 
     @objc private func showAll(_ sender: NSButton) {
+        let items = Bookmarks.shared.items
+        let indices = overflowIndices()
+        guard !indices.isEmpty else { return }
         let menu = NSMenu()
-        for (index, node) in Bookmarks.shared.items.enumerated() {
+        for index in indices where index < items.count {
+            let node = items[index]
             let path = IndexPath(index: index)
             switch node {
             case .bookmark(let b):

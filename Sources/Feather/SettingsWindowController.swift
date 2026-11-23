@@ -9,6 +9,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private let home = NSTextField()
     private let sleep = NSPopUpButton()
     private let cacheLimit = NSPopUpButton()
+    private var ecoMemory: NSButton!
     private var shields: NSButton!
     private var httpsOnly: NSButton!
     private var suggestions: NSButton!
@@ -77,6 +78,11 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         let signedIn = note("Clearing cookies and site data never signs you out of "
                             + (Settings.keepSignedIn.isEmpty ? "any site." : Settings.keepSignedIn.joined(separator: ", ") + "."))
 
+        ecoMemory = checkbox("Eco Memory Mode: aggressively save RAM", #selector(toggled(_:)))
+        let ecoBox = NSStackView(views: [ecoMemory, note("Switches YouTube and Twitch to lightweight mobile web with MSE buffer eviction, sleeps idle background tabs after 30 s, and trims WebKit memory. Turn off for standard behavior.")])
+        ecoBox.orientation = .vertical
+        ecoBox.alignment = .leading
+        ecoBox.spacing = 2
         shields = checkbox("Block ads & trackers (Shields)", #selector(toggled(_:)))
         httpsOnly = checkbox("HTTPS-Only Mode: always use secure connections", #selector(toggled(_:)))
         suggestions = checkbox("Show search engine suggestions", #selector(toggled(_:)))
@@ -133,6 +139,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             [label("Search engine:"), engine],
             [NSGridCell.emptyContentView, customSearch],
             [label("Home page:"), homeRow],
+            [label("Eco Memory:"), ecoBox],
             [label("Sleep inactive tabs after:"), sleep],
             [label("Web cache limit:"), cacheBox],
             [label("Stay signed in:"), signedIn],
@@ -148,11 +155,11 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         grid.rowAlignment = .firstBaseline
         grid.rowSpacing = 10
         grid.columnSpacing = 10
-        for row in [4, 9, 11, 12] { grid.row(at: row).yPlacement = .top; grid.row(at: row).rowAlignment = .none }
-        grid.row(at: 8).rowAlignment = .none
-        grid.row(at: 8).yPlacement = .top
-        grid.row(at: 9).topPadding = 6
+        for row in [3, 5, 10, 12, 13] { grid.row(at: row).yPlacement = .top; grid.row(at: row).rowAlignment = .none }
+        grid.row(at: 9).rowAlignment = .none
+        grid.row(at: 9).yPlacement = .top
         grid.row(at: 10).topPadding = 6
+        grid.row(at: 11).topPadding = 6
         customSearch.widthAnchor.constraint(equalToConstant: 320).isActive = true
         home.widthAnchor.constraint(equalToConstant: 300).isActive = true
         suggestionsNote.preferredMaxLayoutWidth = 340
@@ -198,6 +205,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         sleep.selectItem(at: Self.sleepChoices.firstIndex { $0.1 == minutes } ?? 1)
         let limit = Settings.cacheLimitMB
         cacheLimit.selectItem(at: Self.cacheChoices.lastIndex { $0.1 <= limit } ?? 1)
+        ecoMemory.state = Settings.ecoMemory ? .on : .off
         shields.state = Settings.shieldsEnabled ? .on : .off
         httpsOnly.state = Settings.httpsOnly ? .on : .off
         suggestions.state = Settings.searchSuggestions ? .on : .off
@@ -272,6 +280,9 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     @objc private func toggled(_ sender: NSButton) {
         let on = sender.state == .on
         switch sender {
+        case ecoMemory:
+            Settings.ecoMemory = on
+            BrowserWindowController.applyEcoMemoryChange()
         case shields:
             Settings.shieldsEnabled = on
             BrowserWindowController.all.forEach { $0.shieldsChanged() }

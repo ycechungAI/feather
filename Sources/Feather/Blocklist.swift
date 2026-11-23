@@ -41,6 +41,12 @@ enum Blocklist {
         ("amazon-adsystem.com", ["twitch.tv"]),
     ]
 
+    /// Specific blocked URLs that sites check as playback gates: YouTube's embedded player
+    /// fails with Error 152-4 if `ad_status.js` is blocked.
+    static let urlExceptions: [(filter: String, sites: [String])] = [
+        ("^https?://static\\.doubleclick\\.net/instream/ad_status\\.js", ["youtube.com", "youtube-nocookie.com"]),
+    ]
+
     /// Hides leftover empty ad boxes.
     static let cosmeticSelectors: [String] = [
         ".adsbygoogle", "[id^='google_ads_iframe']", "[id^='div-gpt-ad']",

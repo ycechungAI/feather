@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import WebKit
 import UniformTypeIdentifiers
 
@@ -22,6 +23,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
     private var forwardButton: NSButton!
     private var reloadButton: NSButton!
     private var homeButton: NSButton!
+    private var ecoButton: NSButton!
     private var shieldButton: NSButton!
     private var newTabButton: NSButton!
     private var starButton: NSButton!
@@ -38,10 +40,23 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
     private var baseTitle = ""
     private(set) var isPlayingAudio = false
     private(set) var isMuted = false
-    /// Whether ad blocking is currently applied to this tab's content controller.
-    private var shieldsApplied: Bool?
+    private struct AppliedContent: Equatable { var shields: Bool; var youtube: Bool; var ecoDiet: Bool; var addons: Bool }
+    /// Which content rules and host-scoped scripts are currently applied to this tab.
+    private var appliedContent: AppliedContent?
     /// Set when this blank tab closes itself after handing off a download.
     private var closingForDownload = false
+    /// Previous desktop page to return to when Back is pressed after switching to Mobile YouTube/Twitch.
+    private var ecoReturnURL: URL?
+    private var lastDesktopURL: URL?
+    /// Last YouTube/Twitch content key loaded in Eco Mode so switching videos/channels resets WebContent.
+    private var lastEcoContentKey: String?
+    /// Content key allowed to open on desktop for this tab even while Eco Memory is on.
+    private var ecoBypassKey: String?
+    /// True when this tab was automatically switched to mobile mode because its WebContent exceeded 500 MB.
+    private var isMobileFallback = false
+    private var ecoMobileProbing = false
+    private var ecoMobileOriginalURL: URL?
+    private var ecoBypassHosts = Set<String>()
 
     private var lastActive = Date()
     private var sleepingState: Any?
@@ -398,9 +413,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
             SessionRestore.shared.pushClosed(ClosedTab(url: url, title: baseTitle,
                                                        state: webView?.interactionState ?? sleepingState))
         }
-        observations = []
-        audioObservation = nil
-        webView?.stopLoading()
+        teardownWebView(closeProcess: true)
         host = nil
         Self.all.remove(self)
         tabsChanged()
@@ -476,9 +489,10 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         }
         config.allowsAirPlayForMediaPlayback = true
         Self.applyMemoryPreferences(to: config.preferences)
+        if Settings.ecoMemory { Self.applyEcoMemoryConfiguration(to: config) }
         config.userContentController.add(PiPKeeper.shared, name: MediaScripts.pipMessage)
         Shields.shared.apply(to: config.userContentController, addonInstalls: !isPrivate, host: nil)
-        shieldsApplied = Settings.shieldsActive(for: nil)
+        appliedContent = AppliedContent(shields: Settings.shieldsActive(for: nil), youtube: false, ecoDiet: false, addons: false)
         if !isPrivate { config.webExtensionController = ExtensionManager.shared.controller }
         return config
     }
@@ -495,8 +509,23 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         ("pageVisibilityBasedProcessSuppressionEnabled", true),
     ]
 
+    /// Extra preferences applied only when Eco Memory mode is turned on.
+    static let ecoMemoryPreferences: [(String, Bool)] = [
+        ("invisibleMediaAutoplayNotPermitted", true),
+        ("offlineApplicationCacheIsEnabled", false),
+    ]
+
     private static func applyMemoryPreferences(to preferences: WKPreferences) {
-        for (key, value) in memoryPreferences
+        applyPreferences(memoryPreferences, to: preferences)
+    }
+
+    private static func applyEcoMemoryConfiguration(to config: WKWebViewConfiguration) {
+        config.preferences.inactiveSchedulingPolicy = .suspend
+        applyPreferences(ecoMemoryPreferences, to: config.preferences)
+    }
+
+    private static func applyPreferences(_ list: [(String, Bool)], to preferences: WKPreferences) {
+        for (key, value) in list
         where preferences.responds(to: NSSelectorFromString("_set" + key.prefix(1).uppercased() + key.dropFirst() + ":")) {
             preferences.setValue(value, forKey: key)
         }
@@ -519,7 +548,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         if configuration != nil {
             // A page-opened tab (window.open) arrives with its opener's content rules;
             // re-check them on its first navigation.
-            shieldsApplied = nil
+            appliedContent = nil
         }
 
         observations = [
@@ -565,19 +594,23 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
     func shieldsChanged(rulesChanged: Bool = false) {
         refreshButtons()
         guard let webView else { return }
-        let before = shieldsApplied
-        shieldsApplied = nil // force a fresh apply so a recompiled rule list is picked up
+        let before = appliedContent?.shields
+        appliedContent = nil // force a fresh apply so a recompiled rule list is picked up
         applyShields(for: webView.url?.host)
-        if before != shieldsApplied || rulesChanged, isSelected { webView.reload() }
+        if before != appliedContent?.shields || rulesChanged, isSelected { reloadPage(nil) }
     }
 
-    /// Each tab has its own content controller, so blocking can follow the site you're on.
+    /// Each tab has its own content controller, so blocking and site scripts follow the site you're on.
     private func applyShields(for host: String?) {
         guard let webView else { return }
         let active = Settings.shieldsActive(for: host)
-        guard active != shieldsApplied else { return }
+        let desired = AppliedContent(shields: active,
+                                     youtube: active && Shields.isYouTubeHost(host),
+                                     ecoDiet: Settings.ecoMobileActive(for: host) && Shields.isEcoDietHost(host),
+                                     addons: !isPrivate && Shields.isAddonsHost(host))
+        guard desired != appliedContent else { return }
         Shields.shared.apply(to: webView.configuration.userContentController, addonInstalls: !isPrivate, host: host)
-        shieldsApplied = active
+        appliedContent = desired
         refreshButtons()
     }
 
@@ -604,7 +637,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
 
     static let videoActiveScript = """
         !!document.pictureInPictureElement
-            || [...document.querySelectorAll('video')].some(v => !v.paused
+            || [...document.querySelectorAll('video')].some(v => (!v.paused && !v.muted && v.volume !== 0)
                 || v.webkitPresentationMode === 'picture-in-picture')
         """
 
@@ -613,12 +646,142 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         guard let webView else { return }
         sleepingState = webView.interactionState
         sleepingURL = webView.url
+        if isPlayingAudio { isPlayingAudio = false; refreshTitle() }
+        teardownWebView(closeProcess: Settings.ecoMemory)
+    }
+
+    /// Releases the web view and its content controller. With `closeProcess`, asks WebKit to
+    /// terminate the underlying WebContent XPC process immediately instead of keeping it warm.
+    private func teardownWebView(closeProcess: Bool) {
         observations = []
         audioObservation = nil
-        if isPlayingAudio { isPlayingAudio = false; refreshTitle() }
+        findBar.webView = nil
+        guard let webView else { return }
         webView.stopLoading()
+        webView.navigationDelegate = nil
+        webView.uiDelegate = nil
+        let controller = webView.configuration.userContentController
+        controller.removeAllUserScripts()
+        controller.removeAllContentRuleLists()
+        controller.removeScriptMessageHandler(forName: MediaScripts.pipMessage)
         webView.removeFromSuperview()
+        if closeProcess {
+            let closeSel = NSSelectorFromString("_close")
+            if webView.responds(to: closeSel) { webView.perform(closeSel) }
+        }
         self.webView = nil
+        appliedContent = nil
+    }
+
+    /// Applies Eco Memory across all open tabs immediately: sleeps background tabs and reloads
+    /// awake tabs with the new WebKit configuration (switching YouTube to/from its embed player).
+    static func applyEcoMemoryChange() {
+        let eco = Settings.ecoMemory
+        if eco { TabSuspender.sweep(force: true) }
+        for tab in all {
+            tab.refreshButtons()
+            guard tab.webView != nil else { continue }
+            tab.reloadForEcoMemory(enabled: eco)
+        }
+    }
+
+    /// Rebuilds the tab's web view so Eco Memory preferences and Mobile/Desktop YouTube mode
+    /// take effect immediately and any previous heavy WebContent process is released.
+    /// Physical memory footprint (bytes) for a given PID, matching Activity Monitor.
+    static func memoryBytes(for pid: pid_t) -> UInt64? {
+        guard pid > 0 else { return nil }
+        var info = rusage_info_v4()
+        let rc = withUnsafeMutablePointer(to: &info) { ptr in
+            ptr.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) {
+                proc_pid_rusage(pid, RUSAGE_INFO_V4, $0)
+            }
+        }
+        return rc == 0 ? info.ri_phys_footprint : nil
+    }
+
+    /// Physical memory footprint (bytes) of Feather's main AppKit process.
+    static func appMemoryBytes() -> UInt64 {
+        memoryBytes(for: getpid()) ?? 0
+    }
+
+    /// Reads a `pid_t` property from `webView` by selector (for WebKit's XPC helper PIDs).
+    private func helperPID(_ selectorName: String) -> pid_t? {
+        guard let webView else { return nil }
+        let sel = NSSelectorFromString(selectorName)
+        guard webView.responds(to: sel) else { return nil }
+        typealias PidGetter = @convention(c) (AnyObject, Selector) -> pid_t
+        let getPid = unsafeBitCast(webView.method(for: sel), to: PidGetter.self)
+        let pid = getPid(webView, sel)
+        return pid > 0 ? pid : nil
+    }
+
+    /// PID of this tab's WebContent XPC process, if awake.
+    func webContentPID() -> pid_t? { helperPID("_webProcessIdentifier") }
+
+    /// PID of WebKit's GPU (video decoding & graphics) XPC process.
+    func gpuProcessPID() -> pid_t? { helperPID("_gpuProcessIdentifier") }
+
+    /// PID of WebKit's Networking XPC process.
+    func networkProcessPID() -> pid_t? { helperPID("_networkProcessIdentifier") }
+
+    /// Physical memory footprint (bytes) of this tab's WebContent XPC process, matching Activity Monitor.
+    func webContentMemoryBytes() -> UInt64? {
+        webContentPID().flatMap(Self.memoryBytes(for:))
+    }
+
+    /// In Eco Memory mode, if this awake tab's WebContent process exceeds `limitBytes` (500 MB),
+    /// switches it to its mobile version (dedicated `m.` site if available, or Mobile Safari UA).
+    func switchToMobileIfHeavy(limitBytes: UInt64) {
+        guard Settings.ecoMemory, !isMobileFallback, !ecoMobileProbing,
+              let webView, let url = webView.url,
+              url.scheme == "http" || url.scheme == "https",
+              let host = url.host?.lowercased(), !LiteVideo.isLiteHost(host),
+              Settings.ecoMobileActive(for: host),
+              !ecoBypassHosts.contains(host), ecoBypassKey == nil,
+              webView.cameraCaptureState == .none, webView.microphoneCaptureState == .none,
+              let bytes = webContentMemoryBytes(), bytes > limitBytes else { return }
+        debugLog("eco: \(host) using \(bytes / 1_000_000) MB (> \(limitBytes / 1_000_000) MB), switching to mobile")
+        ecoMobileProbing = true
+        Task { @MainActor [weak self] in
+            let mobileURL = await LiteVideo.resolveMobileURL(for: url)
+            guard let self else { return }
+            self.ecoMobileProbing = false
+            guard Settings.ecoMobileActive(for: host), !self.isMobileFallback, self.webView?.url == url else { return }
+            self.ecoMobileOriginalURL = url
+            self.isMobileFallback = true
+            self.recreateWebViewAndLoad(mobileURL, forceMobileUA: true)
+        }
+    }
+
+    private func reloadForEcoMemory(enabled: Bool) {
+        ecoBypassKey = nil
+        ecoBypassHosts.removeAll()
+        guard let current = webView?.url else { return }
+        let target: URL
+        if enabled, Settings.ecoMobileActive(for: current.host), let lite = LiteVideo.liteURL(for: current) {
+            isMobileFallback = false
+            ecoMobileOriginalURL = nil
+            target = lite
+        } else if !enabled || !Settings.ecoMobileActive(for: current.host) {
+            let restore = ecoMobileOriginalURL ?? LiteVideo.desktopURL(for: current) ?? current
+            isMobileFallback = false
+            ecoMobileOriginalURL = nil
+            target = restore
+        } else {
+            target = current
+        }
+        recreateWebViewAndLoad(target)
+    }
+
+    private func recreateWebViewAndLoad(_ url: URL, forceMobileUA: Bool = false) {
+        if isPlayingAudio { isPlayingAudio = false; refreshTitle() }
+        teardownWebView(closeProcess: true)
+        let fresh = makeWebView()
+        let isLite = Settings.ecoMemory && (forceMobileUA || LiteVideo.isLiteHost(url.host))
+        fresh.customUserAgent = isLite ? LiteVideo.mobileUserAgent : nil
+        lastEcoContentKey = isLite ? LiteVideo.contentKey(for: url) : nil
+        applyShields(for: url.host)
+        fresh.load(URLRequest(url: url))
     }
 
     private func wake() {
@@ -645,6 +808,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         static let forward = NSToolbarItem.Identifier("forward")
         static let reload = NSToolbarItem.Identifier("reload")
         static let home = NSToolbarItem.Identifier("home")
+        static let eco = NSToolbarItem.Identifier("eco")
         static let address = NSToolbarItem.Identifier("address")
         static let shield = NSToolbarItem.Identifier("shield")
         static let newTab = NSToolbarItem.Identifier("newTab")
@@ -660,6 +824,12 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         forwardButton = toolbarButton("chevron.right", "Forward", #selector(navigateForward(_:)))
         reloadButton = toolbarButton("arrow.clockwise", "Reload", #selector(reloadPage(_:)))
         homeButton = toolbarButton("house", "Home", #selector(goHome(_:)))
+        let ecoBtn = RightClickButton(image: NSImage(systemSymbolName: "leaf", accessibilityDescription: "Eco Memory")!,
+                                      target: self, action: #selector(toggleEcoMemory(_:)))
+        ecoBtn.bezelStyle = .texturedRounded
+        ecoBtn.isBordered = false
+        ecoBtn.onRightClick = { [weak self] button in self?.showEcoMenu(button) }
+        ecoButton = ecoBtn
         shieldButton = toolbarButton("shield.lefthalf.filled", "Shields", #selector(showShieldsMenu(_:)))
         downloadsButton = toolbarButton("arrow.down.circle", "Downloads (⌥⌘L)", #selector(AppDelegate.showDownloads(_:)))
         downloadsButton.target = NSApp.delegate
@@ -710,7 +880,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [Item.back, Item.forward, Item.reload, Item.home, Item.video, .flexibleSpace, Item.address, Item.star, .flexibleSpace, Item.downloads, Item.pins, Item.extensions, Item.shield]
+        [Item.back, Item.forward, Item.reload, Item.home, Item.eco, Item.video, .flexibleSpace, Item.address, Item.star, .flexibleSpace, Item.downloads, Item.pins, Item.extensions, Item.shield]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -721,22 +891,22 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
                  willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
         let item = NSToolbarItem(itemIdentifier: id)
         switch id {
-        case Item.back: item.view = backButton; item.label = "Back"
-        case Item.forward: item.view = forwardButton; item.label = "Forward"
-        case Item.reload: item.view = reloadButton; item.label = "Reload"
-        case Item.home: item.view = homeButton; item.label = "Home"
-        case Item.shield: item.view = shieldButton; item.label = "Shields"
-        case Item.pins: item.view = extensionPins; item.label = "Pinned Extensions"
-        case Item.extensions: item.view = extensionsButton; item.label = "Extensions"
+        case Item.back: item.view = backButton; item.label = "Back"; item.visibilityPriority = .standard
+        case Item.forward: item.view = forwardButton; item.label = "Forward"; item.visibilityPriority = .standard
+        case Item.reload: item.view = reloadButton; item.label = "Reload"; item.visibilityPriority = .standard
+        case Item.home: item.view = homeButton; item.label = "Home"; item.visibilityPriority = .user
+        case Item.eco: item.view = ecoButton; item.label = "Eco Memory"; item.visibilityPriority = .user
+        case Item.shield: item.view = shieldButton; item.label = "Shields"; item.visibilityPriority = .user
+        case Item.pins: item.view = extensionPins; item.label = "Pinned Extensions"; item.visibilityPriority = .low
+        case Item.extensions: item.view = extensionsButton; item.label = "Extensions"; item.visibilityPriority = .low
         case Item.video:
-            // One compact group, so the three video buttons take less room and never get split
-            // into the » overflow menu on narrow windows.
+            // One compact group, so the three video buttons take less room.
             let group = NSStackView(views: [pipButton, saveVideoButton, subtitlesButton])
             group.orientation = .horizontal
             group.spacing = 2
             item.view = group
             item.label = "Video"
-            item.visibilityPriority = .high
+            item.visibilityPriority = .low
         case Item.newTab:
             item.view = newTabButton
             item.label = "New Tab"
@@ -744,20 +914,24 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         case Item.star:
             item.view = starButton
             item.label = "Bookmark"
-            item.visibilityPriority = .high
+            item.visibilityPriority = .user
         case Item.downloads:
             item.view = downloadsButton
             item.label = "Downloads"
+            item.visibilityPriority = .standard
             item.isHidden = !Self.showsDownloadsButton
         case Item.address:
             item.view = addressField
             item.label = "Address"
-            item.visibilityPriority = .high
-            // Centered and capped, shrinking with the window down to a compact minimum.
-            addressField.widthAnchor.constraint(greaterThanOrEqualToConstant: 120).isActive = true
-            addressField.widthAnchor.constraint(lessThanOrEqualToConstant: 560).isActive = true
-            let preferred = addressField.widthAnchor.constraint(equalToConstant: 560)
-            preferred.priority = .defaultLow
+            item.visibilityPriority = .user
+            // Shrinks smoothly down to 60 pt (half of the original 120 pt minimum) before any button
+            // overflows, keeping Home, Eco, Address bar, Bookmark, and Shields always visible.
+            addressField.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            addressField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            addressField.widthAnchor.constraint(greaterThanOrEqualToConstant: 60).isActive = true
+            addressField.widthAnchor.constraint(lessThanOrEqualToConstant: 360).isActive = true
+            let preferred = addressField.widthAnchor.constraint(equalToConstant: 360)
+            preferred.priority = .init(200)
             preferred.isActive = true
         default: return nil
         }
@@ -787,6 +961,37 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
     }
 
     private func refreshAddress() {
+        if let url = webView?.url {
+            let key = LiteVideo.contentKey(for: url)
+            if Settings.ecoMobileActive(for: url.host), let lite = LiteVideo.liteURL(for: url), key != ecoBypassKey {
+                // Catch client-side SPA navigations on YouTube/Twitch and replace the heavy
+                // desktop WebContent process with lightweight Mobile Web.
+                let returnTarget = lastDesktopURL
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, Settings.ecoMobileActive(for: url.host), self.webView?.url == url else { return }
+                    self.ecoReturnURL = returnTarget
+                    self.recreateWebViewAndLoad(lite)
+                }
+                return
+            }
+            // Prevent SPA memory leaks across consecutive videos/channels by starting a fresh process.
+            if Settings.ecoMemory, LiteVideo.isLiteHost(url.host), let key, let prev = lastEcoContentKey, key != prev {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, Settings.ecoMemory, self.webView?.url == url else { return }
+                    self.recreateWebViewAndLoad(url)
+                }
+                return
+            }
+            if !LiteVideo.isLiteHost(url.host), !isMobileFallback, url.scheme == "http" || url.scheme == "https" {
+                if webView?.customUserAgent != nil { webView?.customUserAgent = nil }
+                lastDesktopURL = url
+                ecoReturnURL = nil
+                lastEcoContentKey = nil
+                if ecoBypassKey != nil, ecoBypassKey != key {
+                    ecoBypassKey = nil
+                }
+            }
+        }
         if !isPrivate, let url = webView?.url {
             History.shared.visit(url, title: webView?.title)
             tabsChanged()
@@ -818,7 +1023,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
     }
 
     private func refreshButtons() {
-        backButton.isEnabled = webView?.canGoBack ?? false
+        backButton.isEnabled = (webView?.canGoBack ?? false) || ecoReturnURL != nil
         forwardButton.isEnabled = webView?.canGoForward ?? false
         let loading = webView?.isLoading ?? false
         reloadButton.image = NSImage(systemSymbolName: loading ? "xmark" : "arrow.clockwise",
@@ -830,6 +1035,78 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         shieldButton.contentTintColor = active ? .controlAccentColor : .secondaryLabelColor
         shieldButton.toolTip = !Settings.shieldsEnabled ? "Shields down everywhere"
             : active ? "Shields up: blocking ads & trackers" : "Shields down for \(host ?? "this site")"
+        let eco = Settings.ecoMemory
+        ecoButton.image = NSImage(systemSymbolName: eco ? "leaf.fill" : "leaf",
+                                  accessibilityDescription: "Eco Memory")
+        ecoButton.contentTintColor = eco ? .systemGreen : .secondaryLabelColor
+        ecoButton.toolTip = eco
+            ? "Eco Memory: ON — Lite YouTube player, fast tab sleep & memory trimming (right-click for full page)"
+            : "Eco Memory: OFF — Click to aggressively save memory"
+    }
+
+    /// Toolbar leaf button beside Home: toggles Eco Memory mode immediately.
+    @objc func toggleEcoMemory(_ sender: Any?) {
+        Settings.ecoMemory.toggle()
+        NotificationCenter.default.post(name: Settings.changed, object: nil)
+        Self.applyEcoMemoryChange()
+    }
+
+    /// Right-click menu on the Eco button: global toggle, per-site Mobile Mode toggle, and per-tab bypass.
+    private func showEcoMenu(_ sender: NSButton) {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        let toggle = NSMenuItem(title: "Eco Memory Mode", action: #selector(toggleEcoMemory(_:)), keyEquivalent: "")
+        toggle.target = self
+        toggle.state = Settings.ecoMemory ? .on : .off
+        menu.addItem(toggle)
+
+        if let rawHost = webView?.url?.host {
+            let site = SiteRank.site(for: rawHost)
+            menu.addItem(.separator())
+            let siteToggle = NSMenuItem(title: "Mobile Mode on \(site)", action: #selector(toggleSiteEcoMobile(_:)), keyEquivalent: "")
+            siteToggle.target = self
+            siteToggle.state = Settings.ecoMobileActive(for: rawHost) ? .on : .off
+            siteToggle.isEnabled = Settings.ecoMemory
+            menu.addItem(siteToggle)
+        }
+
+        let canBypass = Settings.ecoMemory && isShowingLiteSite
+        let fullPage = NSMenuItem(title: "Open Full Page for This Tab", action: #selector(openFullPageBypassEco(_:)), keyEquivalent: "")
+        fullPage.target = self
+        fullPage.isEnabled = canBypass
+        menu.addItem(fullPage)
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
+    }
+
+    /// Persistently turns Eco Mobile Mode off (or back on) for the current site (e.g. twitch.tv).
+    @objc private func toggleSiteEcoMobile(_ sender: Any?) {
+        guard let rawHost = webView?.url?.host else { return }
+        let site = SiteRank.site(for: rawHost)
+        var list = Settings.ecoAllowlist
+        if Settings.ecoMobileActive(for: rawHost) {
+            list.append(site)
+        } else {
+            list.removeAll { Shields.isAllowlisted(host: rawHost, in: [$0]) || $0 == site }
+        }
+        Settings.ecoAllowlist = list
+        NotificationCenter.default.post(name: Settings.changed, object: nil)
+        reloadForEcoMemory(enabled: Settings.ecoMemory)
+    }
+
+    private var isShowingLiteSite: Bool {
+        isMobileFallback || webView?.url.flatMap(LiteVideo.desktopURL(for:)) != nil
+    }
+
+    /// Bypasses Mobile mode for just this video/channel/site in this tab.
+    @objc func openFullPageBypassEco(_ sender: Any?) {
+        guard let current = webView?.url else { return }
+        let desktop = ecoMobileOriginalURL ?? LiteVideo.desktopURL(for: current) ?? current
+        ecoBypassKey = LiteVideo.contentKey(for: desktop)
+        if let host = desktop.host?.lowercased() { ecoBypassHosts.insert(host) }
+        isMobileFallback = false
+        ecoMobileOriginalURL = nil
+        ecoReturnURL = nil
+        recreateWebViewAndLoad(desktop)
     }
 
     // MARK: Downloads button
@@ -854,6 +1131,10 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         if let chosen = suggestions.selected { return choose(chosen) }
         suggestions.hide()
         guard let url = URLTools.resolve(sender.stringValue) else { return }
+        ecoReturnURL = nil
+        ecoBypassKey = nil
+        isMobileFallback = false
+        ecoMobileOriginalURL = nil
         load(url)
         window?.makeFirstResponder(webView)
     }
@@ -861,6 +1142,10 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
     private func choose(_ suggestion: Suggestion) {
         suggestions.hide()
         addressField.stringValue = suggestion.url.absoluteString
+        ecoReturnURL = nil
+        ecoBypassKey = nil
+        isMobileFallback = false
+        ecoMobileOriginalURL = nil
         load(suggestion.url)
         window?.makeFirstResponder(webView)
     }
@@ -957,6 +1242,8 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         case #selector(toggleMute(_:)):
             item.title = isMuted ? "Unmute Tab" : "Mute Tab"
             return webView != nil || sleepingURL != nil
+        case #selector(openFullPageBypassEco(_:)):
+            return Settings.ecoMemory && isShowingLiteSite
         case #selector(findNextMatch(_:)), #selector(findPreviousMatch(_:)):
             return !FindBar.lastQuery.isEmpty || !findBar.isHidden
         case #selector(closeFindBar(_:)):
@@ -1015,7 +1302,7 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         NotificationCenter.default.post(name: Settings.changed, object: nil)
         for tab in Self.all where tab !== self { tab.shieldsChanged() }
         applyShields(for: rawHost)
-        webView?.reload()
+        reloadPage(nil)
     }
 
     @objc func focusAddressBar(_ sender: Any?) {
@@ -1107,7 +1394,9 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
                 return self.showNotice("No video found on this page",
                                        "Start the video playing, then try Picture in Picture again.")
             }
-            webView.callAsyncJavaScript(Self.pipScript, arguments: [:], in: target.frame, in: .page) { [weak self] result in
+            // Inject PiP keeper on demand into the video's frame instead of every frame on every site.
+            let script = MediaScripts.pipKeeper + "\n" + Self.pipScript
+            webView.callAsyncJavaScript(script, arguments: [:], in: target.frame, in: .page) { [weak self] result in
                 debugLog("pip toggle: \(result)")
                 switch result {
                 case .success(let value as String) where value == "none":
@@ -1440,7 +1729,14 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
         }
     }
 
-    @objc func navigateBack(_ sender: Any?) { webView?.goBack() }
+    @objc func navigateBack(_ sender: Any?) {
+        if let webView, webView.canGoBack {
+            webView.goBack()
+        } else if let back = ecoReturnURL {
+            ecoReturnURL = nil
+            load(back)
+        }
+    }
     @objc func navigateForward(_ sender: Any?) { webView?.goForward() }
 
     @objc func reloadPage(_ sender: Any?) {
@@ -1450,6 +1746,10 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
 
     /// The Home toolbar button: loads the home page (the search engine's homepage).
     @objc func goHome(_ sender: Any?) {
+        ecoReturnURL = nil
+        ecoBypassKey = nil
+        isMobileFallback = false
+        ecoMobileOriginalURL = nil
         load(Settings.homePageURL)
     }
 
@@ -1487,6 +1787,16 @@ final class BrowserWindowController: NSWindowController, NSToolbarDelegate,
             httpsOnly: Settings.httpsOnly, insecureAllowed: insecureAllowed))
         switch policy {
         case .allow:
+            let key = LiteVideo.contentKey(for: url)
+            if Settings.ecoMobileActive(for: url.host), action.targetFrame?.isMainFrame == true, !isExtensionPage,
+               let lite = LiteVideo.liteURL(for: url), key != ecoBypassKey {
+                if let current = webView.url, !LiteVideo.isLiteHost(current.host) {
+                    ecoReturnURL = current
+                }
+                decisionHandler(.cancel)
+                recreateWebViewAndLoad(lite)
+                return
+            }
             // Per-site Shields: switch blocking on or off before the new page starts loading.
             if action.targetFrame?.isMainFrame == true, !isExtensionPage { applyShields(for: url.host) }
             decisionHandler(.allow)
@@ -1771,6 +2081,14 @@ final class ClosureMenuItem: NSMenuItem {
     required init(coder: NSCoder) { fatalError() }
 
     @objc private func fire() { run() }
+}
+
+/// Toolbar button that runs a separate closure on right-click (for Eco Memory's full-page menu).
+private final class RightClickButton: NSButton {
+    var onRightClick: ((NSButton) -> Void)?
+    override func rightMouseDown(with event: NSEvent) {
+        onRightClick?(self)
+    }
 }
 
 private extension NSView {

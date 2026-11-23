@@ -25,7 +25,8 @@ final class TabWindow: NSWindowController, NSWindowDelegate, NSMenuItemValidatio
         window.tabbingMode = .disallowed
         window.titleVisibility = .hidden
         window.toolbarStyle = .unified
-        window.minSize = NSSize(width: 480, height: 320)
+        // Minimum width guarantees Home, Eco, Address bar (min 60 pt), Bookmark, and Shields always fit.
+        window.minSize = NSSize(width: 500, height: 320)
         if isPrivate { window.appearance = NSAppearance(named: .darkAqua) }
         if let front = Self.all.last?.window {
             window.setFrame(front.frame.offsetBy(dx: 24, dy: -24), display: false)

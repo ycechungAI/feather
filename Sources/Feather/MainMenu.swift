@@ -53,6 +53,8 @@ enum MainMenu {
             item("Download Video", #selector(BrowserWindowController.downloadVideo(_:)), "s", [.command, .option]),
             item("Load Subtitle File…", #selector(BrowserWindowController.loadSubtitleFile(_:)), "", []),
             item("Mute Tab", #selector(BrowserWindowController.toggleMute(_:)), "m", [.command, .control]),
+            item("Eco Memory Mode", #selector(AppDelegate.toggleEcoMemory(_:)), "e", [.command, .option]),
+            item("Open Full Page (Bypass Eco)", #selector(BrowserWindowController.openFullPageBypassEco(_:))),
             item("Show Web Inspector", #selector(BrowserWindowController.showWebInspector(_:)), "i", [.command, .option]),
             item("Downloads", #selector(AppDelegate.showDownloads(_:)), "l", [.command, .option]),
             item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),

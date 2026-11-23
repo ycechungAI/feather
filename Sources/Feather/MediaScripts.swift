@@ -5,17 +5,22 @@ import WebKit
 enum MediaScripts {
     static let pipMessage = "featherPiP"
 
-    static var userScripts: [WKUserScript] {
-        [WKUserScript(source: pipKeeper, injectionTime: .atDocumentStart, forMainFrameOnly: false),
-         WKUserScript(source: streamWatcher, injectionTime: .atDocumentStart, forMainFrameOnly: false)]
-    }
+    /// Kept empty so Feather doesn't inject video hooks or a buffered PerformanceObserver into
+    /// every frame of every website. `pipKeeper` is injected on demand when PiP is started, and
+    /// `videoProbe` reads `performance.getEntriesByType('resource')` on demand when downloading.
+    static var userScripts: [WKUserScript] { [] }
 
     /// When an ad starts, YouTube swaps the video's source and sets `disablePictureInPicture`,
     /// which closes the floating window. This keeps that flag off, and if the window still
     /// closes during an ad or a source swap, asks Feather to reopen it (see PiPKeeper).
     /// Closing the window yourself while the main video plays leaves it closed.
+    /// Idempotent so it can be injected on demand when Picture in Picture is activated.
     static let pipKeeper = #"""
     (() => {
+      const guardKey = Symbol.for('feather.pipKeeper');
+      if (window[guardKey]) return;
+      Object.defineProperty(window, guardKey, { value: true });
+
       const desc = Object.getOwnPropertyDescriptor(HTMLVideoElement.prototype, 'disablePictureInPicture');
       if (desc && desc.configurable) {
         Object.defineProperty(HTMLVideoElement.prototype, 'disablePictureInPicture',
@@ -63,36 +68,26 @@ enum MediaScripts {
 }
 
 extension MediaScripts {
-    /// Players that stream through Media Source show a `blob:` address instead of the stream's,
-    /// so this notes the playlists (.m3u8, .mpd) the page loads. It only reads the browser's own
-    /// list of loaded resources.
-    static let streamWatcher = #"""
-    (() => {
-      const key = Symbol.for('feather.streams');
-      if (window[key]) return;
-      const seen = [];
-      Object.defineProperty(window, key, { value: seen });
-      const note = name => { if (/\.(m3u8|mpd)([?#]|$)/i.test(name) && !seen.includes(name)) seen.push(name); };
-      try {
-        new PerformanceObserver(list => list.getEntries().forEach(e => note(e.name)))
-          .observe({ type: 'resource', buffered: true });
-      } catch (e) {}
-    })();
-    """#
-
-    /// Describes this frame's main video (playing beats paused, bigger beats smaller) and
-    /// remembers it for the subtitle scripts below.
+    /// Describes this frame's main video (playing beats paused, bigger beats smaller), reads any
+    /// HLS/DASH playlists from the browser's existing resource timing list on demand, and
+    /// remembers the video for the subtitle scripts below.
     static let videoProbe = #"""
     const videos = [...document.querySelectorAll('video')].filter(v => v.offsetWidth > 0 && v.offsetHeight > 0);
     const area = v => v.offsetWidth * v.offsetHeight;
     const video = videos.find(v => !v.paused) || videos.sort((a, b) => area(b) - area(a))[0];
     if (!video) return JSON.stringify({ score: 0 });
     window[Symbol.for('feather.video')] = video;
+    const streams = [];
+    try {
+      for (const e of performance.getEntriesByType('resource')) {
+        if (/\.(m3u8|mpd)([?#]|$)/i.test(e.name) && !streams.includes(e.name)) streams.push(e.name);
+      }
+    } catch (e) {}
     const kinds = ['subtitles', 'captions', 'forced', ''];
     const tracks = [...video.textTracks].map((t, i) => ({ index: i, label: t.label, language: t.language,
       kind: t.kind, showing: t.mode === 'showing' })).filter(t => kinds.includes(t.kind));
     return JSON.stringify({ score: area(video) + (video.paused ? 0 : 1e9), src: video.currentSrc || video.src || '',
-      streams: window[Symbol.for('feather.streams')] || [], title: document.title, page: location.href,
+      streams, title: document.title, page: location.href,
       userAgent: navigator.userAgent, tracks });
     """#
 

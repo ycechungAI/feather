@@ -75,6 +75,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         NotificationCenter.default.post(name: Settings.changed, object: nil)
     }
 
+    @objc func toggleEcoMemory(_ sender: Any?) {
+        Settings.ecoMemory.toggle()
+        NotificationCenter.default.post(name: Settings.changed, object: nil)
+        BrowserWindowController.applyEcoMemoryChange()
+    }
+
     @objc func showSettings(_ sender: Any?) {
         SettingsWindowController.shared.show()
     }
@@ -164,6 +170,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         switch item.action {
         case #selector(toggleShields(_:)): item.state = Settings.shieldsEnabled ? .on : .off
         case #selector(toggleHTTPSOnly(_:)): item.state = Settings.httpsOnly ? .on : .off
+        case #selector(toggleEcoMemory(_:)): item.state = Settings.ecoMemory ? .on : .off
         case #selector(reopenClosedTab(_:)): return !SessionRestore.shared.closedTabs.isEmpty
         case #selector(reopenLastSession(_:)): return !SessionRestore.shared.previousSession.isEmpty
         default: break

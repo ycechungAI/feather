@@ -44,19 +44,42 @@ final class Shields {
     }
 
     /// Applies or removes blocking on a web view's content controller for pages from `host`.
-    /// `addonInstalls` adds the "Add to Feather" button on addons.mozilla.org (off in private windows).
+    /// Scripts are scoped to the sites that actually need them so other pages pay zero overhead.
     func apply(to controller: WKUserContentController, addonInstalls: Bool, host: String?) {
         controller.removeAllContentRuleLists()
         controller.removeAllUserScripts()
-        if addonInstalls {
+        if addonInstalls, Self.isAddonsHost(host) {
             controller.addUserScript(WKUserScript(source: ExtensionManager.addonsSiteScript,
                                                   injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         }
-        MediaScripts.userScripts.forEach(controller.addUserScript)
+        if Settings.ecoMobileActive(for: host), Self.isEcoDietHost(host) {
+            controller.addUserScript(WKUserScript(source: LiteVideo.ecoDietScript,
+                                                  injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
         guard Settings.shieldsActive(for: host) else { return }
         if let ruleList { controller.add(ruleList) }
-        controller.addUserScript(WKUserScript(source: Blocklist.youtubeScript,
-                                              injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+        if Self.isYouTubeHost(host) {
+            controller.addUserScript(WKUserScript(source: Blocklist.youtubeScript,
+                                                  injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+        }
+    }
+
+    static func isYouTubeHost(_ host: String?) -> Bool {
+        guard let h = host?.lowercased() else { return false }
+        return h == "youtube.com" || h.hasSuffix(".youtube.com")
+    }
+
+    static func isTwitchHost(_ host: String?) -> Bool {
+        guard let h = host?.lowercased() else { return false }
+        return h == "twitch.tv" || h.hasSuffix(".twitch.tv")
+    }
+
+    static func isEcoDietHost(_ host: String?) -> Bool {
+        isYouTubeHost(host) || isTwitchHost(host)
+    }
+
+    static func isAddonsHost(_ host: String?) -> Bool {
+        host?.lowercased() == "addons.mozilla.org"
     }
 
     /// True when `host` or a parent domain of it is in `list` ("example.com" covers "www.example.com").
@@ -119,6 +142,11 @@ final class Shields {
         for exception in Blocklist.siteExceptions {
             let escaped = exception.domain.replacingOccurrences(of: ".", with: "\\.")
             rules.append(["trigger": ["url-filter": "^https?://([^/]+\\.)?\(escaped)[:/]",
+                                      "if-domain": exception.sites.map { "*" + $0 }],
+                          "action": ["type": "ignore-previous-rules"]])
+        }
+        for exception in Blocklist.urlExceptions {
+            rules.append(["trigger": ["url-filter": exception.filter,
                                       "if-domain": exception.sites.map { "*" + $0 }],
                           "action": ["type": "ignore-previous-rules"]])
         }

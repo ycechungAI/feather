@@ -17,12 +17,36 @@ final class TabStripView: NSView {
     private var slots: [Slot] = []
     private var plusRect = NSRect.zero
     private var overflowRect = NSRect.zero
+    private var memoryPillRect = NSRect.zero
     private var hovered: UUID?
+    private var hoveredMemoryPill = false
     private var dragging: UUID?
+    private var memoryTimer: Timer?
+    private var currentTabBytes: UInt64 = 0
+    private var memoryPillText = "—"
+    private var memoryStatsTooltip = ""
 
     override var isFlipped: Bool { true }
 
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        memoryTimer?.invalidate()
+        if window != nil {
+            refreshMemoryStats()
+            let t = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.refreshMemoryStats() }
+            }
+            t.tolerance = 0.5
+            memoryTimer = t
+        } else {
+            memoryTimer = nil
+        }
+    }
+
+    deinit { memoryTimer?.invalidate() }
+
     func reload() {
+        refreshMemoryStats()
         computeSlots()
         needsDisplay = true
     }
@@ -59,16 +83,24 @@ final class TabStripView: NSView {
         !tab.pinned && tab.group.map { owner?.collapsedGroups.contains($0) == true } == true
     }
 
+    private var memoryFont: NSFont { .monospacedDigitSystemFont(ofSize: 10.5, weight: .medium) }
+
     private func computeSlots() {
         slots = []
         guard let model = owner?.model else { return }
+        let pillTextW = ceil((memoryPillText as NSString).size(withAttributes: [.font: memoryFont]).width)
+        let pillW = max(62, pillTextW + 24)
+        let pillH: CGFloat = 20
+        memoryPillRect = NSRect(x: bounds.width - pillW - 8, y: (Self.height - pillH) / 2, width: pillW, height: pillH)
+        let rightEdge = memoryPillRect.minX - 6
+
         let groups = Dictionary(TabGroups.shared.all.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let runs = model.runs
         let pinned = model.pinnedCount
         let unpinned = model.tabs.filter { !$0.pinned && !isFolded($0) }.count
         let labels = runs.filter { !model.tabs[$0.range.lowerBound].pinned }.compactMap { $0.group.flatMap { groups[$0] } }
         let fixed = CGFloat(pinned) * Self.pinnedWidth + labels.reduce(0) { $0 + labelWidth($1) + 4 }
-        let room = bounds.width - 8 - fixed - 64 // + and » buttons
+        let room = rightEdge - 8 - fixed - 60 // + and » buttons
         let width = unpinned == 0 ? Self.tabWidth
             : min(Self.tabWidth, max(Self.minTabWidth, floor(room / CGFloat(unpinned))))
         var x: CGFloat = 8
@@ -85,9 +117,62 @@ final class TabStripView: NSView {
                 x += w
             }
         }
-        let overflow = x + 32 > bounds.width - 30
-        overflowRect = overflow ? NSRect(x: bounds.width - 30, y: y, width: 26, height: h) : .zero
-        plusRect = NSRect(x: min(x + 4, bounds.width - (overflow ? 58 : 32)), y: y, width: 26, height: h)
+        let overflow = x + 32 > rightEdge - 28
+        overflowRect = overflow ? NSRect(x: rightEdge - 28, y: y, width: 26, height: h) : .zero
+        plusRect = NSRect(x: min(x + 4, rightEdge - (overflow ? 56 : 28)), y: y, width: 26, height: h)
+    }
+
+    private func refreshMemoryStats() {
+        let selectedBytes = owner?.selectedTab?.webContentMemoryBytes() ?? 0
+        let appBytes = BrowserWindowController.appMemoryBytes()
+        var seenWebPIDs = Set<pid_t>()
+        var seenGPUPIDs = Set<pid_t>()
+        var seenNetPIDs = Set<pid_t>()
+        var awakeTabsBytes: UInt64 = 0
+        var gpuBytes: UInt64 = 0
+        var netBytes: UInt64 = 0
+        var awakeCount = 0
+        var sleepingCount = 0
+        for tab in BrowserWindowController.all {
+            if tab.isAsleep {
+                sleepingCount += 1
+            } else {
+                awakeCount += 1
+                if let pid = tab.webContentPID(), seenWebPIDs.insert(pid).inserted {
+                    awakeTabsBytes += BrowserWindowController.memoryBytes(for: pid) ?? 0
+                }
+                if let pid = tab.gpuProcessPID(), seenGPUPIDs.insert(pid).inserted {
+                    gpuBytes += BrowserWindowController.memoryBytes(for: pid) ?? 0
+                }
+                if let pid = tab.networkProcessPID(), seenNetPIDs.insert(pid).inserted {
+                    netBytes += BrowserWindowController.memoryBytes(for: pid) ?? 0
+                }
+            }
+        }
+        let totalBytes = appBytes + awakeTabsBytes + gpuBytes + netBytes
+        currentTabBytes = totalBytes
+        memoryPillText = Self.formatBytes(totalBytes)
+        let ecoState = Settings.ecoMemory ? "ON (auto-mobile > 500 MB)" : "OFF"
+        memoryStatsTooltip = """
+        Total Memory: \(Self.formatBytes(totalBytes))
+        Current Tab: \(selectedBytes > 0 ? Self.formatBytes(selectedBytes) : "—")
+        Video / GPU: \(Self.formatBytes(gpuBytes))
+        All Awake Tabs (\(awakeCount)): \(Self.formatBytes(awakeTabsBytes))
+        Networking: \(Self.formatBytes(netBytes))
+        Feather App: \(Self.formatBytes(appBytes))
+        Sleeping Tabs: \(sleepingCount)
+        Eco Memory: \(ecoState)
+        Click for memory stats & actions
+        """
+        if hoveredMemoryPill { toolTip = memoryStatsTooltip }
+        computeSlots()
+        needsDisplay = true
+    }
+
+    private static func formatBytes(_ bytes: UInt64) -> String {
+        let mb = Double(bytes) / 1_000_000
+        if mb >= 1000 { return String(format: "%.2f GB", mb / 1000) }
+        return String(format: "%.0f MB", mb)
     }
 
     // MARK: Drawing
@@ -117,8 +202,29 @@ final class TabStripView: NSView {
         NSGraphicsContext.restoreGraphicsState()
         drawSymbol("plus", in: plusRect)
         if overflowRect != .zero { drawSymbol("chevron.right.2", in: overflowRect) }
+        drawMemoryPill()
         NSColor.separatorColor.setFill()
         NSRect(x: 0, y: bounds.height - 1, width: bounds.width, height: 1).fill()
+    }
+
+    private func drawMemoryPill() {
+        guard memoryPillRect.width > 0 else { return }
+        let pill = NSBezierPath(roundedRect: memoryPillRect, xRadius: memoryPillRect.height / 2, yRadius: memoryPillRect.height / 2)
+        let bgAlpha: CGFloat = hoveredMemoryPill ? 0.95 : 0.72
+        NSColor.controlBackgroundColor.withAlphaComponent(bgAlpha).setFill()
+        pill.fill()
+        NSColor.separatorColor.withAlphaComponent(hoveredMemoryPill ? 0.9 : 0.6).setStroke()
+        pill.lineWidth = 0.75
+        pill.stroke()
+
+        let dotColor: NSColor = currentTabBytes > 1_000_000_000 ? .systemRed
+            : currentTabBytes > 500_000_000 ? .systemOrange : .systemGreen
+        let dot = NSRect(x: memoryPillRect.minX + 8, y: memoryPillRect.midY - 3, width: 6, height: 6)
+        dotColor.setFill()
+        NSBezierPath(ovalIn: dot).fill()
+
+        let textRect = NSRect(x: dot.maxX + 5, y: memoryPillRect.minY, width: memoryPillRect.maxX - dot.maxX - 11, height: memoryPillRect.height)
+        draw(memoryPillText, in: textRect, font: memoryFont, color: .secondaryLabelColor, centered: false)
     }
 
     private func drawLabel(_ group: TabGroup, in rect: NSRect) {
@@ -257,19 +363,33 @@ final class TabStripView: NSView {
 
     override func mouseMoved(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
+        let overPill = memoryPillRect.contains(point)
+        if overPill != hoveredMemoryPill {
+            hoveredMemoryPill = overPill
+            toolTip = overPill ? memoryStatsTooltip : nil
+            needsDisplay = true
+        }
         var id: UUID?
-        if case .tab(let t)? = slot(at: point)?.kind { id = t }
+        if !overPill, case .tab(let t)? = slot(at: point)?.kind { id = t }
         if id != hovered { hovered = id; needsDisplay = true }
     }
 
     override func mouseExited(with event: NSEvent) {
         hovered = nil
+        if hoveredMemoryPill {
+            hoveredMemoryPill = false
+            toolTip = nil
+        }
         needsDisplay = true
     }
 
     override func mouseDown(with event: NSEvent) {
         guard let owner else { return }
         let point = convert(event.locationInWindow, from: nil)
+        if memoryPillRect.contains(point) {
+            showMemoryMenu()
+            return
+        }
         if plusRect.contains(point) { owner.newWindowForTab(nil); return }
         if overflowRect.contains(point) { showOverflowMenu(); return }
         guard let slot = slot(at: point) else {
@@ -329,6 +449,31 @@ final class TabStripView: NSView {
         case .label(let id)?: return TabGroupsMenu.shared.groupMenu(for: id)
         case nil: return nil
         }
+    }
+
+    private func showMemoryMenu() {
+        refreshMemoryStats()
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        for line in memoryStatsTooltip.split(separator: "\n").dropLast() {
+            let info = NSMenuItem(title: String(line), action: nil, keyEquivalent: "")
+            info.isEnabled = false
+            menu.addItem(info)
+        }
+        menu.addItem(.separator())
+        menu.addItem(ClosureMenuItem(title: "Sleep Idle Tabs & Trim Memory Now") { [weak self] in
+            TabSuspender.sweep(force: true)
+            self?.refreshMemoryStats()
+        })
+        let ecoItem = ClosureMenuItem(title: "Eco Memory Mode") { [weak self] in
+            Settings.ecoMemory.toggle()
+            NotificationCenter.default.post(name: Settings.changed, object: nil)
+            BrowserWindowController.applyEcoMemoryChange()
+            self?.refreshMemoryStats()
+        }
+        ecoItem.state = Settings.ecoMemory ? .on : .off
+        menu.addItem(ecoItem)
+        menu.popUp(positioning: nil, at: NSPoint(x: memoryPillRect.minX, y: memoryPillRect.maxY + 4), in: self)
     }
 
     private func showOverflowMenu() {
